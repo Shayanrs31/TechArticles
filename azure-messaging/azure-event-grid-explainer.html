@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Event Grid — From First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Space+Mono:wght@400;700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════ TOKENS ═══════════ */
+[data-theme="dark"]{
+  --bg:#080c14;--bg2:#0d1220;--bg3:#121929;--surface:#161d2e;
+  --border:#1e2a3f;--border2:#263347;--text:#c8d6ee;--muted:#4a5a78;
+  --faint:#1a2338;--accent:#3de8c8;--cyan:#52d4f0;--green:#4afe9e;
+  --amber:#f5c842;--red:#f06b6b;--purple:#a78bfa;
+  --glow1:rgba(61,232,200,.12);--glow2:rgba(82,212,240,.08);
+  --card:rgba(22,29,46,.9);
+}
+[data-theme="light"]{
+  --bg:#f4f6fb;--bg2:#eaecf5;--bg3:#dfe3f0;--surface:#ffffff;
+  --border:#d4d9ec;--border2:#b8c0d8;--text:#1a2240;--muted:#6b748f;
+  --faint:#edf0fa;--accent:#0d8a7a;--cyan:#0883a3;--green:#097a45;
+  --amber:#a07808;--red:#c0332e;--purple:#5b4ab8;
+  --glow1:rgba(13,138,122,.07);--glow2:rgba(8,131,163,.05);
+  --card:rgba(255,255,255,.95);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Lato',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden;transition:background .3s,color .3s}
+
+/* ═══════════ PROGRESS ═══════════ */
+#prog{position:fixed;top:0;left:0;height:2px;width:0%;z-index:900;background:linear-gradient(90deg,var(--accent),var(--cyan),var(--purple))}
+
+/* ═══════════ TOPBAR ═══════════ */
+.topbar{
+  position:fixed;top:2px;left:0;right:0;z-index:800;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.65rem 2rem;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);transition:background .3s,border-color .3s;
+}
+.tb-brand{font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.tb-right{display:flex;align-items:center;gap:1.2rem}
+.stage-lbl{font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:.12em;color:var(--accent)}
+
+/* toggle */
+.tgl-wrap{display:flex;align-items:center;gap:.5rem;font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:.08em;color:var(--muted);cursor:pointer;user-select:none}
+.tgl-rail{width:42px;height:22px;border-radius:11px;background:var(--surface);border:1px solid var(--border2);position:relative;transition:all .3s}
+.tgl-knob{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:all .3s;display:flex;align-items:center;justify-content:center;font-size:8px}
+[data-theme="light"] .tgl-rail{background:var(--accent);border-color:var(--accent)}
+[data-theme="light"] .tgl-knob{transform:translateX(20px);background:#fff}
+
+/* ═══════════ SIDENAV ═══════════ */
+.snav{position:fixed;right:1.3rem;top:50%;transform:translateY(-50%);z-index:200;display:flex;flex-direction:column;gap:5px}
+.snav a{display:block;width:5px;height:5px;border-radius:50%;background:var(--border2);text-decoration:none;transition:all .22s}
+.snav a.on{background:var(--accent);transform:scale(2.2)}
+.snav a:hover{background:var(--muted)}
+
+/* ═══════════ HERO ═══════════ */
+.hero{
+  min-height:100vh;display:flex;flex-direction:column;
+  justify-content:center;align-items:center;text-align:center;
+  padding:7rem 2rem 5rem;position:relative;overflow:hidden;
+}
+.hero-glow{
+  position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 60% 40% at 50% 10%,rgba(61,232,200,.08) 0%,transparent 70%),
+             radial-gradient(ellipse 35% 25% at 80% 70%,rgba(82,212,240,.06) 0%,transparent 60%);
+}
+.hero-eye{font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);margin-bottom:1.6rem}
+.hero h1{
+  font-family:'Spectral',serif;font-size:clamp(3rem,6.5vw,5.5rem);
+  font-weight:300;line-height:1.06;letter-spacing:-.015em;
+  margin-bottom:1.4rem;max-width:800px;
+}
+.hero h1 em{font-style:italic;color:var(--accent)}
+.hero-sub{max-width:520px;font-size:1rem;font-weight:300;color:var(--muted);margin-bottom:3rem;line-height:1.9}
+.hero-pills{display:flex;gap:.45rem;flex-wrap:wrap;justify-content:center;margin-bottom:3.2rem}
+.pill{font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:.1em;padding:.26rem .7rem;border-radius:4px;border:1px solid var(--border2);color:var(--muted);background:var(--surface)}
+.scroll-hint{display:flex;flex-direction:column;align-items:center;gap:.4rem;font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:.16em;color:var(--muted);animation:bob 2.5s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+/* ═══════════ LAYOUT ═══════════ */
+.div{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:0 5rem}
+.stage{min-height:100vh;display:flex;align-items:center;padding:5.5rem 2rem 4rem}
+.sg{max-width:1120px;width:100%;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:3.8rem;align-items:start}
+.sg.rev{direction:rtl}.sg.rev>*{direction:ltr}
+.sg.full{grid-template-columns:1fr;max-width:860px}
+
+/* ═══════════ TEXT PARTS ═══════════ */
+.sn{font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:.65rem;opacity:.8}
+.stage h2{font-family:'Spectral',serif;font-size:clamp(1.65rem,2.8vw,2.3rem);font-weight:300;line-height:1.2;letter-spacing:-.015em;margin-bottom:1.1rem}
+.narr{font-size:.96rem;font-weight:300;color:var(--muted);margin-bottom:1.5rem;line-height:1.9}
+.narr strong{color:var(--text);font-weight:400}
+.narr em{color:var(--accent);font-style:normal;font-weight:700}
+
+.cards{display:flex;flex-direction:column;gap:.5rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.1rem;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.clbl{font-family:'Space Mono',monospace;font-size:.54rem;letter-spacing:.15em;text-transform:uppercase;margin-bottom:.28rem}
+.cg{color:var(--green)}.ca{color:var(--amber)}.cp{color:var(--purple)}
+.card p{font-size:.82rem;color:var(--muted);line-height:1.65}
+.card p strong{color:var(--text);font-weight:400}
+
+/* ═══════════ VISUAL BOXES ═══════════ */
+.vbox{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.4rem;overflow:hidden;position:relative;transition:background .3s,border-color .3s}
+.vbox::before{content:'';position:absolute;top:-30%;left:-20%;width:60%;height:60%;background:var(--glow1);filter:blur(50px);pointer-events:none;border-radius:50%}
+.vt{font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:1rem}
+.vbox canvas{display:block;max-width:100%}
+
+/* ═══════════ FADE UP ═══════════ */
+.fu{opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease}
+.fu.d1{transition-delay:.12s}.fu.d2{transition-delay:.22s}
+.fu.in{opacity:1;transform:translateY(0)}
+
+/* ═══════════ INLINE HELPERS ═══════════ */
+.hl{color:var(--accent);font-weight:700}
+.hlc{color:var(--cyan)}.hlg{color:var(--green)}.hlr{color:var(--red)}.hla{color:var(--amber)}.hlp{color:var(--purple)}
+.mono{font-family:'Space Mono',monospace;font-size:.8em;background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:.06em .35em}
+
+/* ═══════════ COMPONENT STYLES ═══════════ */
+/* Command vs Event (S1) */
+.cve-grid{display:grid;grid-template-columns:1fr 1fr;gap:.65rem}
+.cve-col{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.9rem 1rem}
+.cve-title{font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:.12em;margin-bottom:.55rem}
+.cve-item{display:flex;align-items:flex-start;gap:.5rem;margin-bottom:.38rem;font-size:.78rem;color:var(--muted);line-height:1.5}
+.cve-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:.38rem}
+
+/* Flow rows */
+.flow-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;margin-bottom:.45rem;position:relative;overflow:hidden}
+.flow-inner{display:flex;align-items:center;gap:.5rem}
+.fnode{padding:.3rem .7rem;border-radius:5px;font-family:'Space Mono',monospace;font-size:.62rem;border:1px solid;white-space:nowrap}
+.fn-a{border-color:var(--accent);color:var(--accent);background:rgba(61,232,200,.06)}
+.fn-b{border-color:var(--purple);color:var(--purple);background:rgba(167,139,250,.06)}
+.fn-c{border-color:var(--cyan);color:var(--cyan);background:rgba(82,212,240,.06)}
+.fn-g{border-color:var(--green);color:var(--green);background:rgba(74,254,158,.06)}
+.fn-r{border-color:var(--red);color:var(--red);background:rgba(240,107,107,.06)}
+.fline{flex:1;height:1px;background:var(--border2);position:relative;overflow:visible}
+.fpkt{position:absolute;top:-4px;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pkm 1.8s linear infinite}
+@keyframes pkm{0%{left:-5px;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:100%;opacity:0}}
+
+/* Schema envelope */
+.envelope{width:100%}
+.env-head{background:linear-gradient(135deg,rgba(61,232,200,.08),rgba(82,212,240,.06));border:1px solid var(--accent);border-radius:8px 8px 0 0;padding:.8rem 1rem}
+.env-body{background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:.8rem 1rem}
+.env-st{font-family:'Space Mono',monospace;font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.5rem}
+.env-row{display:flex;justify-content:space-between;align-items:center;gap:.8rem;padding:.2rem 0;border-bottom:1px solid var(--border);font-size:.76rem}
+.env-row:last-child{border-bottom:none}
+.env-key{font-family:'Space Mono',monospace;font-size:.65rem;color:var(--muted)}
+.env-val{color:var(--text);font-size:.73rem}
+
+/* Retry ladder */
+.retry-step{display:flex;align-items:center;gap:.55rem;padding:.45rem .7rem;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:.38rem;font-size:.78rem}
+.rs-t{font-family:'Space Mono',monospace;font-size:.6rem;color:var(--muted);min-width:52px}
+.rs-icon{font-size:.9rem;flex-shrink:0}
+.rs-label{flex:1}
+.rs-badge{font-family:'Space Mono',monospace;font-size:.55rem;padding:.12rem .42rem;border-radius:3px;white-space:nowrap}
+.rb-ok{background:rgba(74,254,158,.1);color:var(--green)}
+.rb-fail{background:rgba(240,107,107,.1);color:var(--red)}
+.rb-wait{background:rgba(245,200,66,.1);color:var(--amber)}
+.rb-dlq{background:rgba(240,107,107,.07);color:var(--red);border:1px solid var(--red)}
+
+/* Topic/sub routing */
+.sub-item{display:flex;align-items:center;gap:.55rem;padding:.48rem .7rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.38rem}
+.sub-line{width:24px;height:1px;background:var(--accent);position:relative;flex-shrink:0}
+.sub-dot{position:absolute;top:-3px;left:0;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.sub-name{font-size:.78rem;font-weight:700;flex:1}
+.sub-filter{font-family:'Space Mono',monospace;font-size:.56rem;color:var(--muted);padding:.1rem .38rem;background:var(--faint);border-radius:3px}
+.sub-badge{margin-left:auto;font-family:'Space Mono',monospace;font-size:.54rem;padding:.12rem .42rem;border-radius:3px;background:rgba(61,232,200,.1);color:var(--accent)}
+
+/* Compare table */
+.ctbl{width:100%;border-collapse:collapse;font-size:.78rem}
+.ctbl th{font-family:'Space Mono',monospace;font-size:.54rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:left;padding:.45rem .65rem;border-bottom:1px solid var(--border)}
+.ctbl td{padding:.5rem .65rem;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent);color:var(--muted);vertical-align:top}
+.ctbl tr:hover td{color:var(--text);background:var(--bg3)}
+.td-s{font-weight:700;color:var(--text);white-space:nowrap}
+
+/* Not grid */
+.not-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.75rem}
+.not-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem .95rem;transition:border-color .2s}
+.not-card:hover{border-color:var(--red)}
+.nt{font-size:.82rem;font-weight:700;color:var(--red);margin-bottom:.28rem}
+.nb{font-size:.77rem;color:var(--muted);line-height:1.6}
+
+/* Scenario tabs */
+.stabs{display:flex;gap:.4rem;margin-bottom:.85rem;flex-wrap:wrap}
+.stab{font-family:'Space Mono',monospace;font-size:.57rem;letter-spacing:.06em;padding:.33rem .72rem;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--muted);transition:all .2s}
+.stab.on{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+.spanel{display:none}
+.spanel.show{display:block}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.5rem}
+.sc-card{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.72rem .9rem}
+.sc-title{font-family:'Space Mono',monospace;font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;margin-bottom:.28rem}
+.sc-why .sc-title{color:var(--green)}.sc-fail .sc-title{color:var(--red)}.sc-scale .sc-title{color:var(--accent)}.sc-sec .sc-title{color:var(--purple)}
+.sc-card p{font-size:.76rem;color:var(--muted);line-height:1.6}
+
+/* Security verify */
+.sec-step{display:flex;align-items:center;gap:.55rem;padding:.5rem .75rem;border-radius:6px;margin-bottom:.38rem;border:1px solid var(--border);background:var(--surface);font-size:.78rem}
+.sec-ok{border-color:var(--green)}.sec-warn{border-color:var(--amber)}.sec-bad{border-color:var(--red)}
+
+/* Meter */
+.meter-row{display:flex;align-items:center;gap:.7rem;margin-bottom:.5rem}
+.ml{font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted);min-width:80px}
+.mt{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.mf{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--cyan));transition:width 1.2s ease}
+.mv{font-family:'Space Mono',monospace;font-size:.58rem;color:var(--accent);min-width:38px;text-align:right}
+
+footer{text-align:center;padding:4rem 2rem;font-family:'Space Mono',monospace;font-size:.58rem;letter-spacing:.14em;color:var(--muted)}
+
+@media(max-width:768px){
+  .sg{grid-template-columns:1fr;gap:2.2rem}
+  .sg.rev{direction:ltr}
+  .snav{display:none}
+  .not-grid,.sc-grid,.cve-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <span class="tb-brand">Azure Event Grid · First Principles</span>
+  <div class="tb-right">
+    <span class="stage-lbl" id="slbl">INTRO</span>
+    <div class="tgl-wrap" onclick="toggleTheme()">
+      <span>DARK</span>
+      <div class="tgl-rail"><div class="tgl-knob" id="tknob">🌙</div></div>
+      <span>LIGHT</span>
+    </div>
+  </div>
+</header>
+
+<!-- SIDE NAV -->
+<nav class="snav" id="snav">
+  <a href="#hero" class="on"></a>
+  <a href="#s0"></a><a href="#s1"></a><a href="#s2"></a><a href="#s3"></a>
+  <a href="#s4"></a><a href="#s5"></a><a href="#s6"></a><a href="#s7"></a>
+  <a href="#s8"></a><a href="#s9"></a><a href="#s10"></a><a href="#s11"></a>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-eye">First Principles · No Marketing · Architect Edition</div>
+  <h1>Azure Event Grid<br><em>is a signal, not a queue.</em></h1>
+  <p class="hero-sub">It pushes facts about things that happened. It does not buffer work. Understanding this distinction prevents the most expensive architectural mistakes in reactive system design.</p>
+  <div class="hero-pills">
+    <span class="pill">12 STAGES</span>
+    <span class="pill">REACTIVE SYSTEMS</span>
+    <span class="pill">FAILURE-FIRST</span>
+    <span class="pill">ARCHITECT LEVEL</span>
+  </div>
+  <div class="scroll-hint">
+    <svg width="13" height="17" fill="none" viewBox="0 0 13 17"><path d="M6.5 1v15M1 11l5.5 5.5L12 11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    SCROLL
+  </div>
+</section>
+
+<!-- STAGE 0 — REACTIVE SYSTEM PROBLEM -->
+<div class="div"></div>
+<section class="stage" id="s0">
+  <div class="sg">
+    <div class="fu">
+      <div class="sn">Stage 0 · Foundation</div>
+      <h2>Polling is a lie you tell yourself about real-time.</h2>
+      <p class="narr">Every 5-second poll that finds nothing is <strong>wasted compute and latency debt</strong>. In a system with 50 services polling 10 resources each, you are generating noise disguised as monitoring. <em>Event-driven architecture replaces polling with notification</em> — things tell you when they change, rather than you asking repeatedly if they have.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>A governance system that polls Azure Resource Manager every 60 seconds to detect unauthorized deployments sees policy violations <strong>up to 60 seconds late</strong>. An event-driven equivalent reacts within milliseconds of the deployment event.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"We can just poll more frequently." At 1-second intervals across 200 services, you are generating 200 API calls per second to detect a rate of events that might be 1 per hour. The signal-to-noise ratio approaches zero.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Near-instant reaction, zero idle compute, natural decoupling.<br><strong>Sacrifice:</strong> You must design for missed events, duplicate delivery, and out-of-order arrival.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Polling vs event-driven — compute waste</div>
+      <canvas id="c0" width="420" height="280" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 1 — EVENT VS COMMAND -->
+<div class="div"></div>
+<section class="stage" id="s1">
+  <div class="sg rev">
+    <div class="fu">
+      <div class="sn">Stage 1 · Mental Model</div>
+      <h2>A command says "do this." An event says "this happened."</h2>
+      <p class="narr">Commands are <strong>imperatives with an implied recipient</strong> — they couple sender and receiver through intent. Events are <strong>facts broadcast into the void</strong> — the publisher doesn't know or care who acts on them. Event Grid deals exclusively in facts. Routing, filtering, and acting on those facts is someone else's problem.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>A system that sends commands like <code style="font-family:'Space Mono',monospace;font-size:.8em">"ProcessImage(id=42)"</code> is tightly coupled to the processing service. A system that emits <code style="font-family:'Space Mono',monospace;font-size:.8em">"blob.created { id: 42 }"</code> can have zero, one, or ten processors — and the emitter never changes.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"I can use Event Grid to trigger workflows." You can use it to <em>start</em> a workflow. But Event Grid has no concept of workflow state, retries, or compensation logic. You are routing a fact, not executing a process.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Publishers are fully ignorant of consumers. Adding a consumer requires zero publisher change.<br><strong>Sacrifice:</strong> You lose the ability to know if the event was "handled." Events are fire-and-forget facts.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Command vs event — coupling model</div>
+      <div id="cve-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 2 — PUSH MODEL -->
+<div class="div"></div>
+<section class="stage" id="s2">
+  <div class="sg">
+    <div class="fu">
+      <div class="sn">Stage 2 · Delivery Model</div>
+      <h2>Event Grid pushes. Queues pull. The difference is who initiates contact.</h2>
+      <p class="narr">In a pull model, consumers check the queue at their own pace. In a push model, <strong>the broker delivers to your endpoint immediately</strong>. Event Grid sends an HTTP POST to your webhook or Azure service. Your endpoint must be reachable, accept the delivery, and return 200 within seconds — <em>or the broker assumes failure.</em></p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>If your webhook endpoint returns 503, Event Grid retries with exponential backoff. If your Function App is cold-starting, the first delivery may time out. <strong>Push delivery means your endpoint's availability directly determines event processing latency</strong>, with no buffering grace period.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"Push is always faster." Push is only faster if the subscriber is ready. A cold Function App receiving a push event must complete its entire cold start before processing. A Service Bus consumer pre-warmed on pull is often faster end-to-end.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Near-zero latency from event to handler when subscriber is warm. No polling overhead.<br><strong>Sacrifice:</strong> Subscriber availability becomes critical path. No back-pressure mechanism for slow consumers.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Push vs pull — delivery initiation</div>
+      <canvas id="c2" width="420" height="280" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 3 — EVENT ROUTING -->
+<div class="div"></div>
+<section class="stage" id="s3">
+  <div class="sg rev">
+    <div class="fu">
+      <div class="sn">Stage 3 · Routing</div>
+      <h2>The topic is a switchboard. Subscriptions are the wires you plug in.</h2>
+      <p class="narr">Events arrive at a topic. Each event subscription defines a filter and a destination endpoint. <strong>The same event can simultaneously route to a Function App, a Service Bus queue, and a Logic App</strong> via separate subscriptions. Routing decisions happen at the broker — consumers never see events they haven't subscribed to.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>Without topic-based routing, fan-out requires producer code changes for every new consumer. With Event Grid subscriptions, <strong>adding a new consumer is a subscription config change</strong>, not a deployment.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"More subscriptions means more load on the publisher." The publisher sends one event to the topic. Event Grid internally fans out. Publisher throughput is not multiplied by subscription count.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Clean separation of routing logic from business logic. Subscriptions are infrastructure config, not code.<br><strong>Sacrifice:</strong> Routing logic lives outside your codebase — harder to test, version-control, and review in PRs.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Topic routing — one event, many destinations</div>
+      <canvas id="c3" width="420" height="290" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 4 — SYSTEM vs CUSTOM TOPICS -->
+<div class="div"></div>
+<section class="stage" id="s4">
+  <div class="sg">
+    <div class="fu">
+      <div class="sn">Stage 4 · Topics</div>
+      <h2>System topics are free wiring already in the wall. Custom topics are yours to define.</h2>
+      <p class="narr">System topics connect directly to Azure resource events — <em>Blob Storage, Resource Groups, Azure Container Registry, Key Vault</em> — with zero producer code. Custom topics are endpoints you publish to from your own application. <strong>Both share the same subscription and filtering model</strong>, but system topics require no SDK, no producer logic, and no infrastructure.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>A governance workflow that triggers on every Azure resource deployment <strong>requires zero application code</strong> with a system topic on the subscription's resource group. The event source is Azure itself — fully managed, fully reliable.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"System topics cost extra." System topics themselves are free to create. You pay only for the operations — deliveries and subscriptions. The metering model is identical to custom topics.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> System topics reduce integration surface area massively for Azure-native event sources.<br><strong>Sacrifice:</strong> You have no control over the event schema for system topics. Azure defines it; you adapt to it.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">System topic — Azure Storage emitting automatically</div>
+      <div id="s4-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 5 — FILTERING & FANOUT -->
+<div class="div"></div>
+<section class="stage" id="s5">
+  <div class="sg rev">
+    <div class="fu">
+      <div class="sn">Stage 5 · Filtering</div>
+      <h2>Every subscriber sees only what it asked for. Filtering is its contract with the topic.</h2>
+      <p class="narr">Each subscription declares filters: by <strong>event type</strong> (e.g. <span class="mono">Microsoft.Storage.BlobCreated</span>), by <strong>subject prefix/suffix</strong> (e.g. <span class="mono">/blobServices/container/uploads/</span>), or by <strong>advanced filter</strong> matching on event data fields. <em>Unmatched events are silently dropped for that subscription</em> — they still route to other matching subscriptions.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>An image processing service that only cares about <span class="mono">.jpg</span> uploads will receive every blob event if subject filtering is not configured. <strong>Without filters, you are paying for delivery and running handler logic on events that should not reach you.</strong></p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"Advanced filters can evaluate nested JSON fields." Advanced filters access top-level properties of the event data object only. Deep nesting requires the subscriber to do its own in-handler filtering after delivery.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Precise, cheap, broker-side filtering. No compute cost for non-matching events.<br><strong>Sacrifice:</strong> Filter logic is external to your codebase, untested by unit tests, and silently suppresses events.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Fan-out with per-subscription filtering</div>
+      <div id="s5-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 6 — DELIVERY & RETRY -->
+<div class="div"></div>
+<section class="stage" id="s6">
+  <div class="sg">
+    <div class="fu">
+      <div class="sn">Stage 6 · Reliability</div>
+      <h2>At-least-once delivery means your subscriber must be idempotent.</h2>
+      <p class="narr">Event Grid retries failed deliveries for up to <strong>24 hours</strong> with exponential backoff starting at 30 seconds. After exhausting retries, the event is either <em>dropped or forwarded to a dead-letter destination</em> — a Storage blob container you configure. The dead-letter container is <strong>not monitored by Event Grid</strong>; you must set up your own alert.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>An image resize function that is not idempotent will resize the same image multiple times if Event Grid retries due to a transient 502 from the Function host. Without an idempotency check on the blob name, <strong>you pay compute and storage costs for duplicate work</strong>.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"Events in the dead-letter container are automatically retried." They are not. Dead-letter is a terminal state. You must build a process that reads from the dead-letter container and republishes events manually or via a scheduled job.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Managed retry removes boilerplate resilience code from subscriber logic.<br><strong>Sacrifice:</strong> Retry storms can overwhelm subscribers. No back-pressure control for Event Grid push — subscriber must protect itself.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Delivery retry ladder — to dead-letter</div>
+      <div id="s6-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 7 — EVENT SCHEMA -->
+<div class="div"></div>
+<section class="stage" id="s7">
+  <div class="sg rev">
+    <div class="fu">
+      <div class="sn">Stage 7 · Schema</div>
+      <h2>The envelope is the contract. The body is your problem.</h2>
+      <p class="narr">Event Grid supports two schemas: its own <strong>Event Grid schema</strong> and the vendor-neutral <strong>CloudEvents 1.0 spec</strong>. The broker inspects the envelope — event type, subject, source — for routing decisions. <em>The data payload is opaque bytes to Event Grid.</em> Interoperability lives in the envelope; your domain logic lives in the body.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>CloudEvents enables portability. A pipeline built on CloudEvents can route through Event Grid today and Knative Eventing tomorrow <strong>without changing producer or consumer code</strong>. Proprietary schema locks you into Event Grid's exact field names.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"I can filter on my custom data fields using any schema." Advanced filtering works on the <code style="font-family:'Space Mono',monospace">data</code> object's top-level keys regardless of schema. Schema choice affects field naming conventions, not filter capability.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> CloudEvents standard enables ecosystem tooling — SDKs, testing frameworks, multi-cloud compatibility.<br><strong>Sacrifice:</strong> CloudEvents adds schema overhead per event. At high volume, the serialization cost is measurable.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Event envelope — broker reads header, ignores body</div>
+      <div id="s7-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 8 — FAILURE MODES -->
+<div class="div"></div>
+<section class="stage" id="s8">
+  <div class="sg">
+    <div class="fu">
+      <div class="sn">Stage 8 · Failure Modes</div>
+      <h2>Every failure mode in Event Grid traces back to one fact: the subscriber owns its own availability.</h2>
+      <p class="narr">Event Grid pushes and forgets. <strong>If your endpoint is down, rate-limiting, cold, or returning 5xx, Event Grid retries — and eventually gives up.</strong> There is no queue absorbing your subscriber's unavailability. Failure modes compound: a cold-start delay can trigger a retry storm that overwhelms the now-warm subscriber.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>An Azure Function subscriber behind Event Grid with no concurrency limit will spin up one instance per in-flight retry. Under a retry storm with 10,000 events retrying simultaneously, you can <strong>exhaust Function App plan limits, trigger cold starts on each instance</strong>, and make the problem worse in a feedback loop.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"Event Grid will slow down if my subscriber is overloaded." Event Grid has no back-pressure mechanism. It pushes at the rate events arrive. Your subscriber must self-limit via Azure Function concurrency settings or API Management rate limiting in front of the webhook.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Push model with no consumer polling overhead.<br><strong>Sacrifice:</strong> No back-pressure, no flow control. The subscriber must be designed as if it could receive any volume at any time.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Failure modes — subscriber-side breakdown</div>
+      <canvas id="c8" width="420" height="280" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 9 — SECURITY MODEL -->
+<div class="div"></div>
+<section class="stage" id="s9">
+  <div class="sg rev">
+    <div class="fu">
+      <div class="sn">Stage 9 · Security</div>
+      <h2>Before Event Grid delivers a single event, it makes your endpoint prove it exists and wants it.</h2>
+      <p class="narr">Webhook subscriptions require a <strong>validation handshake</strong> — Event Grid sends a validation code; your endpoint must echo it back. After creation, delivery is authenticated via shared access keys, SAS tokens, or <em>managed identity for Azure-native destinations</em>. Every delivery is an authenticated HTTP request, not an anonymous push.</p>
+      <div class="cards">
+        <div class="card"><div class="clbl cg">↗ Why It Matters</div><p>Without the validation handshake, anyone who knows your topic endpoint could <strong>subscribe your private webhook to receive arbitrary events from a public topic</strong>. The handshake verifies endpoint ownership before any event is ever delivered.</p></div>
+        <div class="card"><div class="clbl ca">⚠ Common Misconception</div><p>"Managed identity works for all destinations." Managed identity is supported for Azure-native destinations (Functions, Service Bus, Event Hubs, Storage). For generic webhooks, you must use SAS tokens or shared keys embedded in the webhook URL.</p></div>
+        <div class="card"><div class="clbl cp">⇌ Tradeoff Lens</div><p><strong>Gain:</strong> Managed identity eliminates secret rotation entirely for Azure-native pipelines.<br><strong>Sacrifice:</strong> Webhook security with SAS in URL means the secret is visible in Azure portal logs and Activity Log unless carefully filtered.</p></div>
+      </div>
+    </div>
+    <div class="vbox fu d1">
+      <div class="vt">Validation handshake + authenticated delivery</div>
+      <div id="s9-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 10 — WHEN NOT TO USE -->
+<div class="div"></div>
+<section class="stage" id="s10">
+  <div class="sg full fu">
+    <div class="sn">Stage 10 · Boundaries</div>
+    <h2>Event Grid is a signal flare, not a conveyor belt.</h2>
+    <p class="narr">Misapplying Event Grid is expensive and creates hard-to-debug reliability gaps. The service is purpose-built for reactive notification at low-to-medium volume. <strong>Treat this decision table as a checklist before committing to Event Grid in any design.</strong></p>
+    <div class="vbox" style="padding:1.1rem;margin-top:.75rem">
+      <table class="ctbl">
+        <thead><tr><th>Service</th><th>Use When</th><th>Not When</th><th>Key Differentiator</th></tr></thead>
+        <tbody>
+          <tr><td class="td-s">Event Grid</td><td>Reactive notification, Azure resource events, low-volume fan-out</td><td>High-throughput streaming, ordered delivery, long workflows</td><td>Push model, zero buffer, routing</td></tr>
+          <tr><td class="td-s">Service Bus</td><td>Workflows, sessions, DLQ, ordered delivery, retries with state</td><td>High-volume telemetry, stateless fan-out</td><td>Pull model, durable queues, sessions</td></tr>
+          <tr><td class="td-s">Event Hubs</td><td>Telemetry streams, log ingestion, replay, Kafka compat</td><td>Per-event ACK, routing predicates, DLQ</td><td>Log model, partitions, consumer groups</td></tr>
+          <tr><td class="td-s">Direct HTTP</td><td>Request-response with immediate feedback, synchronous APIs</td><td>Decoupling, fan-out, offline consumers</td><td>Synchronous, tight coupling</td></tr>
+          <tr><td class="td-s">DB Triggers</td><td>Simple row-change reactions within single DB boundary</td><td>Cross-service fan-out, external consumers</td><td>Tightly scoped, not cloud-native</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="not-grid">
+      <div class="not-card"><div class="nt">Not for ordering</div><div class="nb">Event Grid provides no sequence guarantees. Two blob.created events from the same container may arrive out of order. If your consumer logic requires sequence, use Service Bus sessions or Event Hubs partition keys.</div></div>
+      <div class="not-card"><div class="nt">Not for high throughput</div><div class="nb">Event Grid caps at ~10M events per second per namespace. For IoT telemetry at millions of msgs/second, Event Hubs with partitions is the correct primitive. Event Grid is optimized for low-to-medium cardinality events.</div></div>
+      <div class="not-card"><div class="nt">Not for long workflows</div><div class="nb">Event Grid triggers, it does not orchestrate. A workflow that needs "retry step 3 if step 2 fails" requires Durable Functions or Logic Apps. Event Grid fires once per event; workflow state is invisible to it.</div></div>
+      <div class="not-card"><div class="nt">Not a message store</div><div class="nb">Events are not persisted beyond the retry window. If no subscriber is available and dead-letter is not configured, the event is silently dropped. There is no replay capability without Capture or a separate store.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 11 — SCENARIOS -->
+<div class="div"></div>
+<section class="stage" id="s11">
+  <div class="sg full fu">
+    <div class="sn">Stage 11 · Architect Scenarios</div>
+    <h2>Same routing model. Four very different reliability contracts.</h2>
+    <p class="narr">Each scenario below uses Event Grid correctly — but each has distinct failure modes and security implications worth examining before production.</p>
+    <div class="stabs" id="stabs">
+      <button class="stab on" onclick="showS(0)">Blob → Image Processing</button>
+      <button class="stab" onclick="showS(1)">Resource Group Governance</button>
+      <button class="stab" onclick="showS(2)">Domain Event Fan-out</button>
+      <button class="stab" onclick="showS(3)">Serverless Reactive</button>
+    </div>
+    <div id="scenarioPanels"></div>
+  </div>
+</section>
+
+<div class="div"></div>
+<footer>AZURE EVENT GRID · FIRST PRINCIPLES · REACTIVE SYSTEMS FAIL BY DEFAULT</footer>
+
+<script>
+/* ══════════════════════════════════
+   THEME
+══════════════════════════════════ */
+function toggleTheme(){
+  const t=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('tknob').textContent=t==='dark'?'🌙':'☀️';
+}
+
+/* ══════════════════════════════════
+   SCROLL
+══════════════════════════════════ */
+const IDS=['hero','s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11'];
+const NAMES=['INTRO','STAGE 0','STAGE 1','STAGE 2','STAGE 3','STAGE 4','STAGE 5','STAGE 6','STAGE 7','STAGE 8','STAGE 9','STAGE 10','STAGE 11'];
+window.addEventListener('scroll',()=>{
+  const p=window.scrollY/(document.body.scrollHeight-window.innerHeight)*100;
+  document.getElementById('prog').style.width=p+'%';
+  const dots=document.querySelectorAll('.snav a');
+  IDS.forEach((id,i)=>{
+    const el=document.getElementById(id);if(!el)return;
+    const r=el.getBoundingClientRect();
+    if(r.top<=window.innerHeight*.55&&r.bottom>=window.innerHeight*.55){
+      dots.forEach(d=>d.classList.remove('on'));
+      if(dots[i])dots[i].classList.add('on');
+      document.getElementById('slbl').textContent=NAMES[i]||'';
+    }
+  });
+  document.querySelectorAll('.fu').forEach(el=>{
+    if(el.getBoundingClientRect().top<window.innerHeight*.88)el.classList.add('in');
+  });
+});
+requestAnimationFrame(()=>{document.querySelectorAll('.fu').forEach(el=>{if(el.getBoundingClientRect().top<window.innerHeight*.88)el.classList.add('in');})});
+
+/* ══════════════════════════════════
+   CANVAS 0 — POLLING VS EVENT
+══════════════════════════════════ */
+(function(){
+  const cv=document.getElementById('c0');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  let t=0;
+  const pollParticles=[];
+  const evtParticles=[];
+
+  function spawnPoll(){
+    // 6 pollers constantly pinging
+    for(let i=0;i<6;i++){
+      if(Math.random()<.15){
+        pollParticles.push({x:30,y:60+i*26,tx:W*.55,ty:60+i*26,pct:0,speed:.04,hit:Math.random()>.85,color:'#f5c842'});
+      }
+    }
+  }
+
+  function spawnEvt(){
+    if(t%80===0){
+      evtParticles.push({x:W*.6,y:H*.5,r:0,maxR:100,speed:1.8,color:'#3de8c8'});
+    }
+  }
+
+  function draw(){
+    const dark=document.documentElement.getAttribute('data-theme')==='dark';
+    const bg=dark?'#0d1220':'#eaecf5';
+    const tc=dark?'#4a5a78':'#6b748f';
+    const bc=dark?'#1e2a3f':'#d4d9ec';
+    ctx.clearRect(0,0,W,H);
+
+    // Divider
+    ctx.strokeStyle=bc;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Labels
+    ctx.font='bold 9px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillStyle='#f5c842';ctx.fillText('POLLING MODEL',W*.25,20);
+    ctx.fillStyle='#3de8c8';ctx.fillText('EVENT-DRIVEN',W*.75,20);
+
+    // Left side — 6 services polling a resource
+    for(let i=0;i<6;i++){
+      const sy=60+i*26;
+      ctx.fillStyle=dark?'#161d2e':'#fff';
+      ctx.strokeStyle='#f5c842';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(8,sy-9,46,18,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#f5c842';ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+      ctx.fillText('Svc '+(i+1),31,sy+3);
+    }
+
+    // Resource on left
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle=bc;ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(W*.52,H*.35,52,30,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle=tc;ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Resource',W*.548,H*.35+17);
+
+    // Right side — event broadcast circle + 3 subscribers
+    const evCx=W*.65,evCy=H*.5;
+    for(let i=0;i<3;i++){
+      const sy=H*.35+i*45;
+      ctx.fillStyle=dark?'#161d2e':'#fff';
+      ctx.strokeStyle='#3de8c8';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(W*.88,sy-9,44,18,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#3de8c8';ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+      ctx.fillText('Sub '+(i+1),W*.902,sy+3);
+    }
+    // Source node on right
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#3de8c8';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(evCx,evCy,14,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#3de8c8';ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('SRC',evCx,evCy+3);
+
+    // Poll particles
+    spawnPoll();
+    for(let i=pollParticles.length-1;i>=0;i--){
+      const p=pollParticles[i];
+      p.pct+=p.speed;
+      const ex=p.x+(p.tx-p.x)*Math.min(1,p.pct*1.5);
+      const ey=p.y;
+      if(p.pct>1.1){pollParticles.splice(i,1);continue;}
+      ctx.beginPath();ctx.arc(ex,ey,3,0,Math.PI*2);
+      ctx.fillStyle=p.hit?'#f5c842':'rgba(245,200,66,.2)';ctx.fill();
+      if(!p.hit&&p.pct>.4){
+        ctx.fillStyle='rgba(240,107,107,.6)';ctx.font='7px monospace';ctx.textAlign='center';
+        ctx.fillText('∅',ex,ey-5);
+      }
+    }
+
+    // Event ripples
+    spawnEvt();
+    for(let i=evtParticles.length-1;i>=0;i--){
+      const p=evtParticles[i];
+      p.r+=p.speed;
+      const op=Math.max(0,1-p.r/p.maxR);
+      ctx.beginPath();ctx.arc(evCx,evCy,p.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(61,232,200,${op*.5})`;ctx.lineWidth=1.5;ctx.stroke();
+      if(p.r>p.maxR){evtParticles.splice(i,1);}
+    }
+
+    // Waste indicator
+    ctx.fillStyle=tc;ctx.font='8px Space Mono,monospace';ctx.textAlign='left';
+    const miss=pollParticles.filter(p=>!p.hit).length;
+    ctx.fillStyle='#f5c842';ctx.fillText(`wasted polls: ${pollParticles.length-miss}/${pollParticles.length}`,8,H-8);
+    ctx.fillStyle='#3de8c8';ctx.textAlign='right';ctx.fillText('event-driven: push on change',W-8,H-8);
+
+    t++;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ══════════════════════════════════
+   CMD vs EVT (S1)
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('cve-viz');if(!c)return;
+  c.innerHTML=`
+  <div class="cve-grid">
+    <div class="cve-col" style="border-color:var(--amber)">
+      <div class="cve-title" style="color:var(--amber)">COMMAND — imperative</div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--amber)"></div><span>Directed at a specific receiver</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--amber)"></div><span>Implies recipient exists and is ready</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--amber)"></div><span>Couples sender to handler</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--amber)"></div><span>Example: ProcessOrder(id=42)</span></div>
+      <div style="margin-top:.65rem;padding:.5rem .65rem;background:rgba(245,200,66,.06);border-radius:5px;font-size:.73rem;color:var(--muted)">
+        <strong style="color:var(--amber)">Problem:</strong> What if the handler is down? What if two handlers should process it? Every new consumer requires the producer to know about it.
+      </div>
+    </div>
+    <div class="cve-col" style="border-color:var(--accent)">
+      <div class="cve-title" style="color:var(--accent)">EVENT — declarative fact</div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--accent)"></div><span>Broadcast to anyone listening</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--accent)"></div><span>Publisher has zero knowledge of consumers</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--accent)"></div><span>Fully decoupled by design</span></div>
+      <div class="cve-item"><div class="cve-dot" style="background:var(--accent)"></div><span>Example: OrderPlaced { id: 42 }</span></div>
+      <div style="margin-top:.65rem;padding:.5rem .65rem;background:rgba(61,232,200,.06);border-radius:5px;font-size:.73rem;color:var(--muted)">
+        <strong style="color:var(--accent)">Constraint:</strong> You cannot know if the event was handled. Delivery is at-least-once. Consumers must be idempotent. No response channel.
+      </div>
+    </div>
+  </div>
+  <div class="flow-box" style="margin-top:.65rem">
+    <div class="vt" style="margin-bottom:.5rem">Event Grid deals only in events — never commands</div>
+    <div class="flow-inner">
+      <div class="fnode fn-g">Azure Storage</div>
+      <div class="fline"><div class="fpkt" style="background:var(--accent)"></div></div>
+      <div class="fnode fn-a">Event Grid</div>
+      <div class="fline"><div class="fpkt" style="animation-delay:.6s;background:var(--cyan)"></div></div>
+      <div style="display:flex;flex-direction:column;gap:.28rem">
+        <div class="fnode fn-c" style="font-size:.56rem;padding:.22rem .55rem">Function App</div>
+        <div class="fnode fn-c" style="font-size:.56rem;padding:.22rem .55rem">Logic App</div>
+        <div class="fnode fn-c" style="font-size:.56rem;padding:.22rem .55rem">Service Bus</div>
+      </div>
+    </div>
+    <div style="margin-top:.5rem;font-size:.72rem;color:var(--muted)">The "BlobCreated" fact broadcasts to all — Storage doesn't know how many handlers exist.</div>
+  </div>`;
+})();
+
+/* ══════════════════════════════════
+   CANVAS 2 — PUSH VS PULL
+══════════════════════════════════ */
+(function(){
+  const cv=document.getElementById('c2');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  let t=0;
+  const pushPkts=[];const pullPkts=[];
+
+  function draw(){
+    const dark=document.documentElement.getAttribute('data-theme')==='dark';
+    const tc=dark?'#4a5a78':'#6b748f';
+    const bc=dark?'#1e2a3f':'#d4d9ec';
+    ctx.clearRect(0,0,W,H);
+
+    // Divider
+    ctx.strokeStyle=bc;ctx.setLineDash([4,4]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font='bold 9px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillStyle='#3de8c8';ctx.fillText('PUSH — Event Grid',W*.25,20);
+    ctx.fillStyle='#a78bfa';ctx.fillText('PULL — Service Bus',W*.75,20);
+
+    // PUSH LEFT
+    const bx=W*.03,by=H*.4,bw=62,bh=28;
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#3de8c8';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(bx,by,bw,bh,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#3de8c8';ctx.font='8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Broker',bx+bw/2,by+bh/2+3);
+
+    const sx=W*.32,sy=H*.3;
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#3de8c8';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(sx-28,sy-10,56,22,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#3de8c8';ctx.font='8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Subscriber',sx,sy+3);
+
+    const sx2=W*.32,sy2=H*.58;
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#3de8c8';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(sx2-28,sy2-10,56,22,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='rgba(61,232,200,.4)';ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Sub2 (cold)',sx2,sy2+3);
+
+    // Push arrows
+    if(t%55===0){
+      pushPkts.push({x:bx+bw,y:by+bh/2,tx:sx-28,ty:sy,color:'#3de8c8',d:0});
+      pushPkts.push({x:bx+bw,y:by+bh/2,tx:sx2-28,ty:sy2,color:'rgba(61,232,200,.4)',d:0});
+    }
+    for(let i=pushPkts.length-1;i>=0;i--){
+      const p=pushPkts[i];p.d+=.035;
+      const ex=p.x+(p.tx-p.x)*Math.min(1,p.d);const ey=p.y+(p.ty-p.y)*Math.min(1,p.d);
+      const g=ctx.createRadialGradient(ex,ey,0,ex,ey,6);
+      g.addColorStop(0,p.color);g.addColorStop(1,'transparent');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(ex,ey,6,0,Math.PI*2);ctx.fill();
+      if(p.d>1.1){pushPkts.splice(i,1);}
+    }
+
+    // PULL RIGHT
+    const qx=W*.53,qy=H*.35,qw=65,qh=60;
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#a78bfa';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(qx,qy,qw,qh,5);ctx.fill();ctx.stroke();
+    // Queue slots
+    for(let i=0;i<4;i++){
+      ctx.fillStyle='rgba(167,139,250,.15)';ctx.strokeStyle='rgba(167,139,250,.3)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(qx+6,qy+6+i*12,qw-12,10,2);ctx.fill();ctx.stroke();
+    }
+    ctx.fillStyle='#a78bfa';ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Queue/Topic',qx+qw/2,qy+qh+11);
+
+    const px=W*.87,py=H*.4;
+    ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle='#a78bfa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(px-30,py-11,60,22,5);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#a78bfa';ctx.font='8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Consumer',px,py+3);
+
+    // Pull arrows (consumer → queue)
+    if(t%70===0){pullPkts.push({x:px-30,y:py,tx:qx+qw,ty:qy+qh/2,color:'#a78bfa',d:0,back:false});}
+    for(let i=pullPkts.length-1;i>=0;i--){
+      const p=pullPkts[i];p.d+=.025;
+      const ex=p.x+(p.tx-p.x)*Math.min(1,p.d);const ey=p.y+(p.ty-p.y)*Math.min(1,p.d);
+      ctx.beginPath();ctx.arc(ex,ey,3,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();
+      if(p.d>1.1){pullPkts.splice(i,1);}
+    }
+
+    // Labels
+    ctx.fillStyle=tc;ctx.font='8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('↑ BROKER pushes immediately',W*.25,H-8);
+    ctx.fillText('← CONSUMER polls at its own pace',W*.75,H-8);
+
+    t++;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ══════════════════════════════════
+   CANVAS 3 — ROUTING
+══════════════════════════════════ */
+(function(){
+  const cv=document.getElementById('c3');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  let t=0;
+  const routes=[
+    {name:'Function App',color:'#3de8c8',y:H*.2,filter:'type=blob.created'},
+    {name:'Logic App',color:'#52d4f0',y:H*.4,filter:'subject contains /uploads/'},
+    {name:'Service Bus',color:'#a78bfa',y:H*.6,filter:'eventType=blob.*'},
+    {name:'Event Hubs',color:'#4afe9e',y:H*.8,filter:'(all events)'},
+  ];
+  const topicX=W*.38,topicY=H*.5;
+  const pkts=[];
+
+  function draw(){
+    const dark=document.documentElement.getAttribute('data-theme')==='dark';
+    const tc=dark?'#4a5a78':'#6b748f';
+    const bc=dark?'#1e2a3f':'#d4d9ec';
+    ctx.clearRect(0,0,W,H);
+
+    // Source node
+    ctx.fillStyle=dark?'#161d2e':'#fff';
+    ctx.strokeStyle='#3de8c8';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(8,topicY-18,72,36,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#3de8c8';ctx.font='bold 8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('Topic',44,topicY-3);ctx.font='7px Space Mono,monospace';ctx.fillText('event source',44,topicY+9);
+
+    // Routes
+    routes.forEach((r,i)=>{
+      const dx=W*.93;
+      ctx.strokeStyle=r.color+'55';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(80,topicY);ctx.lineTo(dx-70,r.y);ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle=dark?'#161d2e':'#fff';ctx.strokeStyle=r.color;ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(dx-68,r.y-11,110,22,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=r.color;ctx.font='7px Space Mono,monospace';ctx.textAlign='center';
+      ctx.fillText(r.name,dx-13,r.y+3);
+
+      // Filter badge
+      ctx.fillStyle=r.color+'22';ctx.strokeStyle=r.color+'55';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(dx-68,r.y+14,110,14,3);ctx.fill();ctx.stroke();
+      ctx.fillStyle=tc;ctx.font='6px Space Mono,monospace';ctx.textAlign='center';
+      ctx.fillText(r.filter,dx-13,r.y+23);
+    });
+
+    // Spawn + animate packets
+    if(t%50===0){
+      routes.forEach(r=>{
+        pkts.push({x:80,y:topicY,tx:W*.93-68,ty:r.y,color:r.color,d:0,delay:Math.random()*.3});
+      });
+    }
+    pkts.forEach((p,i)=>{
+      if(p.delay>0){p.delay-=.02;return;}
+      p.d+=.03;
+      const ex=p.x+(p.tx-p.x)*Math.min(1,p.d);
+      const ey=p.y+(p.ty-p.y)*Math.min(1,p.d);
+      const g=ctx.createRadialGradient(ex,ey,0,ex,ey,7);
+      g.addColorStop(0,p.color+'cc');g.addColorStop(1,'transparent');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(ex,ey,7,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(ex,ey,2.5,0,Math.PI*2);ctx.fill();
+    });
+    for(let i=pkts.length-1;i>=0;i--){if(pkts[i].d>1.1)pkts.splice(i,1);}
+
+    t++;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ══════════════════════════════════
+   S4 VIZ — SYSTEM TOPIC
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('s4-viz');if(!c)return;
+  c.innerHTML=`
+  <div style="margin-bottom:.65rem;font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted)">Azure Storage automatically emits — zero producer code required</div>
+  <div class="flow-box">
+    <div class="flow-inner">
+      <div class="fnode fn-g">Azure Storage</div>
+      <div style="font-size:.72rem;color:var(--muted);padding:0 .3rem">auto-emits ↓</div>
+    </div>
+    <div style="margin:.35rem 0;padding:.45rem .65rem;background:rgba(61,232,200,.05);border:1px solid rgba(61,232,200,.25);border-radius:5px;font-family:'Space Mono',monospace;font-size:.62rem">
+      <span style="color:var(--accent)">Microsoft.Storage.BlobCreated</span><br>
+      <span style="color:var(--muted)">{ "topic": "/subscriptions/.../storageAccounts/mystore",</span><br>
+      <span style="color:var(--muted)">&nbsp;&nbsp;"subject": "/blobServices/default/containers/uploads/blobs/photo.jpg",</span><br>
+      <span style="color:var(--accent)">&nbsp;&nbsp;"eventType": "Microsoft.Storage.BlobCreated", }</span>
+    </div>
+    <div class="flow-inner" style="margin-top:.35rem">
+      <div class="fnode fn-a">System Topic</div>
+      <div class="fline"><div class="fpkt"></div></div>
+      <div style="display:flex;flex-direction:column;gap:.28rem">
+        <div class="fnode fn-c" style="font-size:.58rem;padding:.22rem .5rem">Process Image (Function)</div>
+        <div class="fnode fn-c" style="font-size:.58rem;padding:.22rem .5rem">Index Metadata (Logic App)</div>
+        <div class="fnode fn-c" style="font-size:.58rem;padding:.22rem .5rem">Audit Log (Service Bus)</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:.55rem">
+    <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted);margin-bottom:.35rem">CUSTOM TOPIC — you control the schema and publish</div>
+    <div class="flow-box">
+      <div class="flow-inner">
+        <div class="fnode fn-b">Your App</div>
+        <div style="font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted);padding:0 .3rem">SDK publish →</div>
+        <div class="fnode fn-a">Custom Topic</div>
+        <div class="fline"><div class="fpkt" style="animation-delay:.7s"></div></div>
+        <div class="fnode fn-c">Subscribers</div>
+      </div>
+    </div>
+    <div style="font-size:.73rem;color:var(--muted);margin-top:.35rem">Custom topics cost ~$0.60 per 10M operations. System topics are free to create — you pay only per delivery.</div>
+  </div>`;
+})();
+
+/* ══════════════════════════════════
+   S5 VIZ — FANOUT + FILTER
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('s5-viz');if(!c)return;
+  const subs=[
+    {name:'Image Processor',filter:'subject endsWith .jpg',color:'#3de8c8',match:true,d:'0s'},
+    {name:'Audit Logger',filter:'(all events)',color:'#4afe9e',match:true,d:'.3s'},
+    {name:'PDF Handler',filter:'subject endsWith .pdf',color:'rgba(240,107,107,.6)',match:false,d:'.6s'},
+    {name:'Metadata Indexer',filter:'eventType = BlobCreated',color:'#52d4f0',match:true,d:'.9s'},
+  ];
+  const style=document.createElement('style');
+  style.textContent=`@keyframes subpkt2{0%{left:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:22px;opacity:0}}`;
+  document.head.appendChild(style);
+  c.innerHTML=`
+    <div class="sub-item" style="border-color:var(--accent);margin-bottom:.75rem;background:rgba(61,232,200,.04)">
+      <span style="font-family:'Space Mono',monospace;font-size:.65rem;color:var(--accent)">📤 Topic: storage.events</span>
+      <span style="font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted);margin-left:auto">1 event → ${subs.length} subscriptions evaluated</span>
+    </div>
+    ${subs.map(s=>`
+      <div class="sub-item" style="${!s.match?'opacity:.5;border-style:dashed':''}">
+        <div class="sub-line" style="background:${s.color};position:relative">
+          <div class="sub-dot" style="background:${s.color};animation:subpkt2 1.4s linear infinite ${s.d}"></div>
+        </div>
+        <span class="sub-name" style="${!s.match?'color:var(--muted)':''}">${s.name}</span>
+        <span class="sub-filter">${s.filter}</span>
+        <span class="sub-badge" style="${!s.match?'background:rgba(240,107,107,.1);color:var(--red)':''}">${s.match?'MATCH':'NO MATCH'}</span>
+      </div>
+    `).join('')}
+    <div style="margin-top:.65rem;font-size:.75rem;color:var(--muted);line-height:1.7">
+      The <strong style="color:var(--red)">PDF Handler</strong> filter evaluates and returns no match — 
+      the event is silently dropped for that subscription. <strong style="color:var(--text)">No error, no log, no dead letter.</strong> 
+      Non-matching events vanish at the broker. Always verify filter logic with test events before production.
+    </div>`;
+})();
+
+/* ══════════════════════════════════
+   S6 VIZ — RETRY LADDER
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('s6-viz');if(!c)return;
+  const steps=[
+    {t:'T+0s',icon:'📤',label:'Initial delivery attempt',badge:'rb-fail',btext:'503 Service Unavailable',cls:''},
+    {t:'T+30s',icon:'🔄',label:'Retry 1 — exponential backoff',badge:'rb-fail',btext:'503 still down',cls:''},
+    {t:'T+60s',icon:'🔄',label:'Retry 2',badge:'rb-fail',btext:'Timeout (30s limit)',cls:''},
+    {t:'T+90s',icon:'🔄',label:'Retry 3',badge:'rb-wait',btext:'200 OK',cls:'sec-ok'},
+    {t:'T+N',icon:'☠️',label:'Max retries exceeded → dead-letter',badge:'rb-dlq',btext:'→ DLQ blob',cls:''},
+  ];
+  c.innerHTML=`
+    ${steps.map(s=>`
+      <div class="retry-step ${s.cls}">
+        <span class="rs-t">${s.t}</span>
+        <span class="rs-icon">${s.icon}</span>
+        <span class="rs-label">${s.label}</span>
+        <span class="rs-badge ${s.badge}">${s.btext}</span>
+      </div>
+    `).join('')}
+    <div style="margin-top:.55rem;padding:.6rem .85rem;background:rgba(240,107,107,.05);border:1px solid rgba(240,107,107,.2);border-radius:7px;font-size:.77rem;color:var(--muted);line-height:1.65">
+      <strong style="color:var(--red)">Dead-letter warning:</strong> The DLQ blob container is not monitored by Event Grid.
+      You must configure Azure Monitor alerts on blob write events to the dead-letter container.
+      An unmonitored dead-letter container is a silent data sink. 
+      <strong style="color:var(--text)">Set up alerts before production.</strong>
+    </div>
+    <div style="margin-top:.5rem;font-size:.75rem;color:var(--muted)">Default: 24h retry window · configurable per subscription · max event delivery TTL: 14 days</div>`;
+})();
+
+/* ══════════════════════════════════
+   S7 VIZ — SCHEMA ENVELOPE
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('s7-viz');if(!c)return;
+  c.innerHTML=`
+    <div class="envelope">
+      <div class="env-head">
+        <div class="env-st" style="color:var(--accent)">ENVELOPE — Event Grid inspects these fields</div>
+        <div class="env-row"><span class="env-key">id</span><span class="env-val" style="font-family:'Space Mono',monospace;font-size:.7rem">evt-7f3a9c21-a1b2</span></div>
+        <div class="env-row"><span class="env-key">source</span><span class="env-val" style="font-family:'Space Mono',monospace;font-size:.7rem">/subscriptions/.../storageAccounts/store1</span></div>
+        <div class="env-row"><span class="env-key">type</span><span class="env-val" style="color:var(--accent);font-family:'Space Mono',monospace;font-size:.7rem">Microsoft.Storage.BlobCreated</span></div>
+        <div class="env-row"><span class="env-key">subject</span><span class="env-val" style="font-family:'Space Mono',monospace;font-size:.7rem">/blobServices/default/containers/uploads/blobs/photo.jpg</span></div>
+        <div class="env-row"><span class="env-key">time</span><span class="env-val">2024-11-15T14:22:01.382Z</span></div>
+        <div class="env-row"><span class="env-key">specversion</span><span class="env-val" style="color:var(--green)">1.0 (CloudEvents)</span></div>
+      </div>
+      <div class="env-body">
+        <div class="env-st" style="color:var(--muted)">DATA PAYLOAD — Event Grid never reads this</div>
+        <div style="font-family:'Space Mono',monospace;font-size:.62rem;color:var(--muted);padding:.4rem .6rem;background:var(--faint);border-radius:5px;line-height:1.7">
+          { "api": "PutBlob", "blobType": "BlockBlob",<br>
+          &nbsp;&nbsp;"contentLength": 524288, "contentType": "image/jpeg",<br>
+          &nbsp;&nbsp;"url": "https://store1.blob.core.windows.net/uploads/photo.jpg" }
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:.6rem;display:flex;gap:.5rem">
+      <div style="flex:1;padding:.5rem .7rem;background:rgba(61,232,200,.06);border:1px solid rgba(61,232,200,.2);border-radius:6px;font-size:.72rem;color:var(--muted)">
+        <strong style="color:var(--accent)">Event Grid schema:</strong> Azure-specific field names. Better portal experience. Vendor lock-in.
+      </div>
+      <div style="flex:1;padding:.5rem .7rem;background:rgba(74,254,158,.06);border:1px solid rgba(74,254,158,.2);border-radius:6px;font-size:.72rem;color:var(--muted)">
+        <strong style="color:var(--green)">CloudEvents 1.0:</strong> Vendor-neutral. Multi-cloud portable. Slightly more verbose schema.
+      </div>
+    </div>`;
+})();
+
+/* ══════════════════════════════════
+   CANVAS 8 — FAILURE MODES
+══════════════════════════════════ */
+(function(){
+  const cv=document.getElementById('c8');if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  let t=0;
+  const failures=[
+    {label:'Endpoint DOWN',detail:'Returns 5xx → retry backoff',color:'#f06b6b',x:W*.08,y:H*.18,r:30,state:'error'},
+    {label:'Cold Start',detail:'30s timeout → retry',color:'#f5c842',x:W*.5,y:H*.2,r:28,state:'slow'},
+    {label:'Rate Limit',detail:'429 → retry storm risk',color:'#a78bfa',x:W*.88,y:H*.18,r:30,state:'throttle'},
+    {label:'Invalid URL',detail:'Permanent failure → DLQ',color:'#f06b6b',x:W*.25,y:H*.7,r:28,state:'dead'},
+    {label:'Event Storm',detail:'N×retries × subscribers',color:'#f5c842',x:W*.72,y:H*.72,r:32,state:'storm'},
+  ];
+  const pkts=[];
+
+  function draw(){
+    const dark=document.documentElement.getAttribute('data-theme')==='dark';
+    const tc=dark?'#4a5a78':'#6b748f';
+    ctx.clearRect(0,0,W,H);
+
+    // Central broker
+    ctx.fillStyle=dark?'#161d2e':'#fff';
+    ctx.strokeStyle='#3de8c8';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(W*.5,H*.47,22,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#3de8c8';ctx.font='bold 8px Space Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('EG',W*.5,H*.47+3);
+
+    failures.forEach((f,i)=>{
+      const pulse=.5+.5*Math.sin(t*.05+i*1.1);
+
+      // Pulse ring
+      if(f.state!=='dead'){
+        ctx.beginPath();ctx.arc(f.x,f.y,f.r+8*pulse,0,Math.PI*2);
+        ctx.strokeStyle=f.color+'33';ctx.lineWidth=1;ctx.stroke();
+      }
+
+      // Connection line to broker
+      ctx.strokeStyle=f.state==='dead'?'rgba(240,107,107,.2)':f.color+'44';
+      ctx.setLineDash(f.state==='dead'?[4,4]:[]);ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(W*.5,H*.47);ctx.lineTo(f.x,f.y);ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Node
+      ctx.fillStyle=dark?'#161d2e':'#fff';
+      ctx.strokeStyle=f.color;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.fillStyle=f.color;ctx.font='bold 8px Space Mono,monospace';ctx.textAlign='center';
+      const lines=f.label.split(' ');
+      lines.forEach((l,li)=>ctx.fillText(l,f.x,f.y-4+li*11));
+      ctx.fillStyle=tc;ctx.font='7px Space Mono,monospace';
+      ctx.fillText(f.detail,f.x,f.y+f.r+11);
+    });
+
+    // Particles from broker to nodes
+    if(t%45===0){
+      failures.forEach(f=>{
+        pkts.push({sx:W*.5,sy:H*.47,tx:f.x,ty:f.y,d:0,color:f.color,speed:.04});
+      });
+    }
+    for(let i=pkts.length-1;i>=0;i--){
+      const p=pkts[i];p.d+=p.speed;
+      const ex=p.sx+(p.tx-p.sx)*Math.min(1,p.d);
+      const ey=p.sy+(p.ty-p.sy)*Math.min(1,p.d);
+      ctx.beginPath();ctx.arc(ex,ey,3,0,Math.PI*2);
+      ctx.fillStyle=p.color;ctx.fill();
+      if(p.d>1.1)pkts.splice(i,1);
+    }
+
+    ctx.fillStyle=tc;ctx.font='8px Space Mono,monospace';ctx.textAlign='left';
+    ctx.fillText('No back-pressure — Event Grid pushes regardless of subscriber state',8,H-6);
+    t++;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ══════════════════════════════════
+   S9 VIZ — SECURITY
+══════════════════════════════════ */
+(function(){
+  const c=document.getElementById('s9-viz');if(!c)return;
+  c.innerHTML=`
+    <div style="margin-bottom:.55rem;font-family:'Space Mono',monospace;font-size:.58rem;color:var(--muted)">Subscription creation → validation → authenticated delivery</div>
+    <div class="sec-step sec-ok"><span style="font-size:.9rem">1️⃣</span><div style="flex:1"><div style="font-weight:700;font-size:.8rem">Validation Handshake</div><div style="font-size:.75rem;color:var(--muted)">Event Grid sends validation code to endpoint. Endpoint must echo validationCode back within 10 minutes.</div></div><span class="rs-badge rb-ok">REQUIRED</span></div>
+    <div class="sec-step sec-ok"><span style="font-size:.9rem">2️⃣</span><div style="flex:1"><div style="font-weight:700;font-size:.8rem">Managed Identity (Azure Destinations)</div><div style="font-size:.75rem;color:var(--muted)">For Function Apps, Service Bus, Event Hubs, Storage — Event Grid authenticates via MSI. No secrets.</div></div><span class="rs-badge rb-ok">PREFERRED</span></div>
+    <div class="sec-step sec-warn"><span style="font-size:.9rem">3️⃣</span><div style="flex:1"><div style="font-weight:700;font-size:.8rem">SAS Token in Webhook URL</div><div style="font-size:.75rem;color:var(--muted)">SAS token embedded in the webhook URL. Token visible in Azure portal and Activity Log. Rotate regularly.</div></div><span class="rs-badge rb-wait">USE CAREFULLY</span></div>
+    <div class="sec-step sec-bad"><span style="font-size:.9rem">4️⃣</span><div style="flex:1"><div style="font-weight:700;font-size:.8rem">Shared Key in URL (legacy)</div><div style="font-size:.75rem;color:var(--muted)">Static key in endpoint URL. No expiry, no rotation enforcement. Avoid for new workloads.</div></div><span class="rs-badge rb-fail">AVOID</span></div>
+    <div style="margin-top:.6rem;padding:.55rem .85rem;background:rgba(61,232,200,.05);border:1px solid rgba(61,232,200,.2);border-radius:7px;font-size:.77rem;color:var(--muted);line-height:1.65">
+      <strong style="color:var(--accent)">Best practice:</strong> Use Managed Identity for all Azure-native destinations. 
+      For external webhooks, validate endpoint ownership, use short-lived SAS tokens, 
+      and place Azure API Management in front to log and rate-limit deliveries.
+    </div>`;
+})();
+
+/* ══════════════════════════════════
+   SCENARIOS
+══════════════════════════════════ */
+const SCENARIOS=[
+  {
+    title:'Blob → Image Processing',
+    cards:[
+      {type:'sc-why',title:'Why Event Grid Fits',body:'Zero producer code. Azure Storage emits BlobCreated automatically via system topic. Filter by subject suffix (.jpg, .png) to route only images to the processor.'},
+      {type:'sc-fail',title:'Failure Considerations',body:'Function cold-start causes first delivery timeout → retry. Image processor must check if output blob already exists before processing (idempotency). Configure dead-letter on the subscription.'},
+      {type:'sc-scale',title:'Scaling Implications',body:'Event Grid fans out one-to-one per blob. At 1,000 uploads/second, 1,000 Function invocations trigger simultaneously. Set maxConcurrentCalls on the Function host to prevent memory exhaustion.'},
+      {type:'sc-sec',title:'Security Considerations',body:'Use Managed Identity between Event Grid and the Function App. Enable "Enable Azure AD" on the Function App host to block unauthenticated invocations. No SAS tokens required.'},
+    ]
+  },
+  {
+    title:'Resource Group Governance',
+    cards:[
+      {type:'sc-why',title:'Why Event Grid Fits',body:'Azure Resource Manager emits events for every deployment, deletion, and modification via system topic on the subscription. Governance Logic App subscribes to Microsoft.Resources.ResourceWriteSuccess events.'},
+      {type:'sc-fail',title:'Failure Considerations',body:'Logic App HTTP trigger returns 202 (async) — Event Grid interprets as success. If the Logic App workflow fails internally, Event Grid never retries. Monitor Logic App run failures separately via Azure Monitor.'},
+      {type:'sc-scale',title:'Scaling Implications',body:'Resource events are infrequent relative to app events. Event Grid is well within scale limits. Concern is governance Logic App throughput during large Terraform deployments that create 50+ resources simultaneously.'},
+      {type:'sc-sec',title:'Security Considerations',body:'System topics on Azure subscriptions require the Event Grid application to have read access to the subscription. Scope RBAC tightly — Event Grid should have "Event Grid Contributor" on the topic, not "Owner" on the subscription.'},
+    ]
+  },
+  {
+    title:'Microservice Domain Events',
+    cards:[
+      {type:'sc-why',title:'Why Event Grid Fits',body:'OrderService publishes OrderPlaced to a custom topic. InventoryService, EmailService, and AnalyticsService each subscribe with their own filters. Adding a new consumer is a subscription config, not a code deploy.'},
+      {type:'sc-fail',title:'Failure Considerations',body:'At-least-once means each subscriber must handle duplicate OrderPlaced events. Use orderId as an idempotency key in all downstream handlers. If one subscriber fails repeatedly, its dead-letter events must not block other subscribers.'},
+      {type:'sc-scale',title:'Scaling Implications',body:'Event Grid supports up to 10M events/second per namespace. For high-volume order processing (>1M/day), verify subscription count and filter complexity do not increase routing latency. Test with realistic event volumes before production.'},
+      {type:'sc-sec',title:'Security Considerations',body:'Custom topic access key must not be shared across services. Each publisher service should have its own SAS token or use Managed Identity if publishing from Azure compute. Rotate access keys on a defined schedule.'},
+    ]
+  },
+  {
+    title:'Serverless Reactive Workflow',
+    cards:[
+      {type:'sc-why',title:'Why Event Grid Fits',body:'User completes a form → CosmosDB triggers Event Grid (via Change Feed or custom publish) → Event Grid fans out to: send confirmation email (SendGrid via Logic App), update search index (Azure Search via Function), trigger async PDF generation.'},
+      {type:'sc-fail',title:'Failure Considerations',body:'This workflow has three independent subscribers. Failure in PDF generation does not block email delivery. Each failure path must be monitored independently. Dead-letter containers for each subscription must have separate alerts.'},
+      {type:'sc-scale',title:'Scaling Implications',body:'Serverless cold starts are the primary latency risk. Pre-warm Functions using "Always On" or Premium plan for latency-sensitive subscribers like confirmation emails. Analytics indexing can tolerate cold starts.'},
+      {type:'sc-sec',title:'Security Considerations',body:'CosmosDB Change Feed integration requires careful scoping — the Function reading the feed and publishing to Event Grid must have write access only to the specific custom topic. Use separate Managed Identities for each step in the chain.'},
+    ]
+  }
+];
+
+function showS(idx){
+  document.querySelectorAll('.stab').forEach((b,i)=>b.classList.toggle('on',i===idx));
+  const s=SCENARIOS[idx];
+  document.getElementById('scenarioPanels').innerHTML=`
+    <div class="sc-grid">
+      ${s.cards.map(card=>`
+        <div class="sc-card ${card.type}">
+          <div class="sc-title">${card.title}</div>
+          <p>${card.body}</p>
+        </div>
+      `).join('')}
+    </div>`;
+}
+showS(0);
+</script>
+</body>
+</html>
