@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Integration &amp; Messaging — First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --t:.3s ease; }
+[data-theme="dark"] {
+  --bg:#0c0e14; --bg2:#111420; --bg3:#161a26; --surface:#1c2132; --border:#252d42;
+  --text:#dde3f0; --muted:#5b6581; --subtle:#2a3350;
+  --accent:#4fc3f7; --accent2:#a78bfa; --accent3:#34d399;
+  --warn:#fbbf24; --danger:#f87171;
+}
+[data-theme="light"] {
+  --bg:#f5f7fb; --bg2:#eef1f8; --bg3:#e8ecf4; --surface:#ffffff; --border:#d1d9ed;
+  --text:#1e2540; --muted:#8090b0; --subtle:#dde4f3;
+  --accent:#0284c7; --accent2:#7c3aed; --accent3:#059669;
+  --warn:#d97706; --danger:#dc2626;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);transition:background var(--t),color var(--t);overflow-x:hidden;line-height:1.65}
+
+.progress-track{position:fixed;top:0;left:0;right:0;height:2px;background:var(--border);z-index:200}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .1s linear}
+
+.top-bar{position:fixed;top:2px;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:.75rem 2rem;background:var(--bg);border-bottom:1px solid var(--border);z-index:199;transition:background var(--t)}
+.top-title{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.stage-ind{font-family:'DM Mono',monospace;font-size:.68rem;color:var(--accent);letter-spacing:.08em}
+.theme-btn{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:.3rem .8rem;cursor:pointer;color:var(--text);font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.1em;transition:all var(--t);display:flex;align-items:center;gap:.4rem}
+.theme-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.side-nav{position:fixed;right:1.4rem;top:50%;transform:translateY(-50%);z-index:100;display:flex;flex-direction:column;gap:6px}
+.snd{width:6px;height:6px;border-radius:50%;background:var(--border);cursor:pointer;transition:all .2s;display:block}
+.snd.active{background:var(--accent);transform:scale(1.6)}
+.snd:hover{background:var(--muted)}
+
+.stage{min-height:100vh;display:flex;align-items:center;padding:6rem 2rem 4rem;position:relative}
+.si{max-width:1120px;margin:0 auto;width:100%;display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center}
+.si.single{grid-template-columns:1fr;max-width:860px}
+.si.flip{direction:rtl}
+.si.flip>*{direction:ltr}
+.sdiv{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:0 6rem}
+
+.snum{font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.18em;color:var(--accent);text-transform:uppercase;margin-bottom:.6rem;opacity:.8}
+.stage h2{font-size:clamp(1.6rem,2.8vw,2.3rem);font-weight:600;line-height:1.18;margin-bottom:1.2rem;letter-spacing:-.02em}
+.narr{font-size:1.02rem;font-weight:300;opacity:.85;margin-bottom:1.5rem;line-height:1.8}
+.ig{display:flex;flex-direction:column;gap:.55rem}
+.ic{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;transition:border-color var(--t),background var(--t)}
+.ic:hover{border-color:var(--accent)}
+.il{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;margin-bottom:.28rem}
+.lw{color:var(--accent3)}.lm{color:var(--warn)}.lt{color:var(--accent2)}
+.ic p{font-size:.86rem;color:var(--muted);line-height:1.6}
+.ic p strong{color:var(--text);font-weight:500}
+
+.viz{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.4rem;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;transition:background var(--t),border-color var(--t)}
+.vlabel{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;position:absolute;top:.85rem;left:1rem}
+
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6rem 2rem 4rem;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 70% 50% at 50% 20%,rgba(79,195,247,.07) 0%,transparent 70%);pointer-events:none}
+.eyebrow{font-family:'DM Mono',monospace;font-size:.68rem;letter-spacing:.22em;color:var(--muted);text-transform:uppercase;margin-bottom:1.5rem}
+.hero h1{font-size:clamp(2.6rem,5.5vw,4.8rem);font-weight:600;letter-spacing:-.04em;line-height:1.07;margin-bottom:1.5rem;max-width:780px}
+.hero h1 span{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{max-width:520px;font-size:1.05rem;font-weight:300;color:var(--muted);margin-bottom:3rem;line-height:1.75}
+.scrl{display:flex;flex-direction:column;align-items:center;gap:.4rem;color:var(--muted);font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.14em;animation:flt 2.4s ease-in-out infinite}
+@keyframes flt{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+
+.fu{opacity:0;transform:translateY(24px);transition:opacity .5s ease,transform .5s ease}
+.fu.in{opacity:1;transform:translateY(0)}
+
+.hi{color:var(--accent);font-weight:500}
+.hi2{color:var(--accent2);font-weight:500}
+.hi3{color:var(--accent3);font-weight:500}
+.hw{color:var(--warn);font-weight:500}
+.hd{color:var(--danger);font-weight:500}
+.mono{font-family:'DM Mono',monospace;font-size:.85em}
+
+/* Spectrum */
+.sp-item{display:flex;align-items:center;gap:.7rem;padding:.5rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;cursor:pointer;transition:all .2s;margin-bottom:.3rem}
+.sp-item:hover,.sp-item.open{border-color:var(--accent)}
+.sp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sp-name{font-size:.82rem;font-weight:500;flex:1}
+.sp-bw{flex:2;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.sp-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .6s ease}
+.sp-tag{font-family:'DM Mono',monospace;font-size:.55rem;letter-spacing:.08em;padding:.12rem .4rem;border-radius:3px;background:var(--subtle);color:var(--muted);white-space:nowrap}
+.sp-detail{display:none;padding:.35rem .8rem .55rem;font-size:.78rem;color:var(--muted);line-height:1.55;border-left:2px solid var(--accent);margin-left:.2rem;margin-bottom:.3rem}
+.sp-detail.show{display:block}
+
+/* call comparison */
+.cc{display:flex;flex-direction:column;gap:.9rem;width:100%}
+.cc-row{display:flex;flex-direction:column;gap:.3rem}
+.cc-lbl{font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.cc-track{display:flex;align-items:center;gap:.5rem;padding:.65rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;min-height:50px;flex-wrap:wrap}
+.nb{padding:.3rem .65rem;border-radius:5px;font-size:.72rem;font-weight:500;white-space:nowrap;border:1px solid}
+.na{background:rgba(79,195,247,.08);border-color:var(--accent);color:var(--accent)}
+.nb2{background:rgba(167,139,250,.08);border-color:var(--accent2);color:var(--accent2)}
+.nd{background:rgba(248,113,113,.08);border-color:var(--danger);color:var(--danger)}
+.nk{background:rgba(52,211,153,.08);border-color:var(--accent3);color:var(--accent3)}
+.cline{flex:1;height:1px;background:var(--border);position:relative;min-width:20px}
+.cline.act{background:var(--accent)}
+.cline.fail{background:var(--danger);opacity:.4}
+.pkt{position:absolute;top:-4px;width:8px;height:8px;border-radius:50%;background:var(--accent);animation:mp 1.8s linear infinite}
+@keyframes mp{0%{left:0%;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:100%;opacity:0}}
+
+/* envelope */
+.ev-h{background:linear-gradient(135deg,rgba(79,195,247,.08),rgba(167,139,250,.08));border:1px solid var(--accent);border-radius:8px 8px 0 0;padding:.8rem 1rem}
+.ev-b{background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:.8rem 1rem}
+.ev-st{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;margin-bottom:.5rem}
+.ev-f{display:flex;justify-content:space-between;align-items:flex-start;gap:.8rem;padding:.2rem 0;border-bottom:1px solid var(--border);font-size:.76rem}
+.ev-f:last-child{border-bottom:none}
+.ev-k{color:var(--muted);font-family:'DM Mono',monospace;font-size:.7rem}
+.ev-v{color:var(--text);font-weight:500;text-align:right;word-break:break-all}
+.ev-op{font-style:italic;color:var(--muted);font-size:.76rem;padding:.45rem .7rem;background:var(--subtle);border-radius:5px;margin-top:.35rem}
+.pipe-track{margin-top:.8rem;height:22px;background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden;position:relative}
+.pipe-dot{position:absolute;top:5px;width:12px;height:12px;border-radius:50%;background:white;opacity:.9;animation:pdot 3s ease-in-out infinite}
+@keyframes pdot{0%{left:-10px;opacity:0}5%{opacity:1}95%{opacity:1}100%{left:calc(100% + 5px);opacity:0}}
+.pipe-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3));border-radius:11px;animation:pfill 3s ease-in-out infinite}
+@keyframes pfill{0%{width:0%;left:0}50%{width:60%;left:15%}100%{width:0%;left:100%}}
+
+/* delivery */
+.dr-row{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem .95rem;margin-bottom:.6rem}
+.dr-hdr{display:flex;align-items:center;gap:.65rem;margin-bottom:.45rem}
+.db{font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.08em;padding:.18rem .55rem;border-radius:4px}
+.damo{background:rgba(248,113,113,.12);color:var(--danger)}
+.dalo{background:rgba(251,191,36,.12);color:var(--warn)}
+.deo{background:rgba(107,114,128,.12);color:var(--muted);text-decoration:line-through}
+.dt{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.dm{width:22px;height:14px;border-radius:3px;font-size:8px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;border:1px solid}
+.dok{background:rgba(52,211,153,.15);border-color:var(--accent3);color:var(--accent3)}
+.dlost{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:rgba(248,113,113,.4)}
+.ddup{background:rgba(251,191,36,.15);border-color:var(--warn);color:var(--warn)}
+.dn{font-size:.74rem;color:var(--muted);margin-top:.4rem}
+
+/* queue */
+.qt{display:flex;align-items:center;gap:.35rem;padding:.7rem;background:var(--surface);border:1px solid var(--border);border-radius:7px;margin-bottom:.5rem;overflow:hidden;min-height:48px}
+.qlbl{font-family:'DM Mono',monospace;font-size:.58rem;letter-spacing:.1em;color:var(--muted);min-width:65px}
+.qmsgs{display:flex;gap:4px;flex:1;align-items:center}
+.qm{width:26px;height:20px;border-radius:3px;font-family:'DM Mono',monospace;font-size:8px;display:flex;align-items:center;justify-content:center;border:1px solid var(--accent);color:var(--accent);background:rgba(79,195,247,.1)}
+.qm.lk{border-color:var(--warn);color:var(--warn);background:rgba(251,191,36,.1)}
+.wrow{display:flex;align-items:center;gap:.45rem;padding:.45rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:.76rem;margin-bottom:.35rem}
+.wi{width:8px;height:8px;border-radius:50%}
+.wb{background:var(--accent3)}.widl{background:var(--muted)}
+
+/* pubsub */
+.tp{background:var(--surface);border:1px solid var(--accent2);border-radius:7px;padding:.6rem .95rem;text-align:center;margin-bottom:.9rem;font-size:.8rem;font-weight:500;color:var(--accent2)}
+.sb{display:flex;align-items:center;gap:.6rem;padding:.45rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:.4rem}
+.sbl{font-size:.76rem;font-weight:500;flex:1}
+.sbf{font-family:'DM Mono',monospace;font-size:.57rem;color:var(--muted);padding:.1rem .38rem;background:var(--subtle);border-radius:3px}
+.sbfan{margin-left:auto;font-family:'DM Mono',monospace;font-size:.57rem;padding:.12rem .45rem;border-radius:3px;background:rgba(167,139,250,.1);color:var(--accent2)}
+.sbline{width:28px;height:1px;background:var(--accent2);flex-shrink:0;position:relative}
+.sbpkt{position:absolute;top:-3px;left:0;width:6px;height:6px;border-radius:50%;background:var(--accent2)}
+
+/* stream */
+.prt{display:flex;align-items:center;gap:.45rem;margin-bottom:.4rem}
+.prtl{font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted);min-width:58px}
+.prtrack{flex:1;height:26px;background:var(--surface);border:1px solid var(--border);border-radius:5px;overflow:hidden;position:relative}
+.prevts{display:flex;height:100%;align-items:center;gap:2px;padding:0 3px;animation:sf 5s linear infinite}
+@keyframes sf{from{transform:translateX(0)}to{transform:translateX(-64px)}}
+.pe{width:20px;height:18px;border-radius:3px;flex-shrink:0;font-size:7px;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace}
+
+/* peek lock */
+.pls{display:flex;align-items:center;gap:.55rem;padding:.5rem .8rem;border-radius:6px;margin-bottom:.35rem;border:1px solid var(--border);background:var(--surface);font-size:.78rem}
+.pls.hl{border-color:var(--warn)}
+.pls.dng{border-color:var(--danger)}
+.pls.suc{border-color:var(--accent3)}
+.pli{font-size:.95rem;flex-shrink:0}
+.pltt{flex:1}
+.plst{font-family:'DM Mono',monospace;font-size:.58rem;padding:.12rem .45rem;border-radius:3px}
+.stlk{background:rgba(251,191,36,.1);color:var(--warn)}
+.stfl{background:rgba(248,113,113,.1);color:var(--danger)}
+.stok{background:rgba(52,211,153,.1);color:var(--accent3)}
+.stdlq{background:rgba(248,113,113,.08);color:var(--danger);border:1px solid var(--danger)}
+
+/* sessions */
+.slane{display:flex;align-items:center;gap:.45rem;margin-bottom:.45rem;padding:.45rem .65rem;background:var(--surface);border:1px solid var(--border);border-radius:6px}
+.sid{font-family:'DM Mono',monospace;font-size:.58rem;padding:.18rem .45rem;border-radius:4px;min-width:68px;text-align:center;flex-shrink:0}
+.sa{background:rgba(79,195,247,.1);border:1px solid var(--accent);color:var(--accent)}
+.sb2{background:rgba(167,139,250,.1);border:1px solid var(--accent2);color:var(--accent2)}
+.sc{background:rgba(52,211,153,.1);border:1px solid var(--accent3);color:var(--accent3)}
+.smsgs{display:flex;gap:2px;flex:1}
+.smsg{width:24px;height:18px;border-radius:3px;font-family:'DM Mono',monospace;font-size:7px;display:flex;align-items:center;justify-content:center;border:1px solid}
+
+/* tx */
+.txop{flex:1;min-width:75px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.55rem .7rem;text-align:center;transition:all .4s;font-size:.76rem}
+.txop.cm{border-color:var(--accent3);background:rgba(52,211,153,.08)}
+.txop.rb{border-color:var(--danger);background:rgba(248,113,113,.08)}
+.txopn{font-size:.68rem;color:var(--muted);margin-bottom:.18rem}
+.txbtn{flex:1;padding:.42rem;border-radius:6px;border:1px solid;font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.08em;cursor:pointer;transition:all .2s;background:transparent}
+.tcmt{border-color:var(--accent3);color:var(--accent3)}.tcmt:hover{background:rgba(52,211,153,.1)}
+.tfail{border-color:var(--danger);color:var(--danger)}.tfail:hover{background:rgba(248,113,113,.1)}
+
+/* compare table */
+.ctbl{width:100%;border-collapse:collapse;font-size:.76rem}
+.ctbl th{font-family:'DM Mono',monospace;font-size:.57rem;letter-spacing:.12em;color:var(--muted);text-align:left;padding:.45rem .65rem;border-bottom:1px solid var(--border)}
+.ctbl td{padding:.5rem .65rem;border-bottom:1px solid rgba(37,45,66,.5);color:var(--muted);vertical-align:top}
+.ctbl tr:hover td{color:var(--text);background:var(--bg3)}
+.tsvc{font-weight:600;color:var(--text);white-space:nowrap}
+
+/* scenarios */
+.sc-tab{font-family:'DM Mono',monospace;font-size:.62rem;letter-spacing:.08em;padding:.28rem .7rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;transition:all .2s;margin-right:.3rem;margin-bottom:.3rem}
+.sc-tab.act,.sc-tab:hover{border-color:var(--accent);color:var(--accent);background:rgba(79,195,247,.07)}
+.sc-content{display:none}.sc-content.show{display:block}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:.55rem}
+.scd{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.65rem .85rem}
+.scdl{font-family:'DM Mono',monospace;font-size:.57rem;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:.28rem}
+.scdv{font-size:.8rem}
+
+/* not-cards */
+.ncg{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;width:100%;margin-top:1.2rem}
+.nc{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:.75rem .95rem;transition:all .2s}
+.nc:hover{border-color:var(--danger)}
+.nct{font-size:.8rem;font-weight:600;margin-bottom:.28rem;color:var(--danger)}
+.ncw{font-size:.74rem;color:var(--muted);line-height:1.55}
+
+@media(max-width:768px){
+  .si{grid-template-columns:1fr;gap:2rem}
+  .si.flip{direction:ltr}
+  .side-nav{display:none}
+  .sg{grid-template-columns:1fr}
+  .ncg{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="progress-track"><div class="progress-fill" id="pf"></div></div>
+
+<div class="top-bar">
+  <span class="top-title">Azure Integration &amp; Messaging · First Principles</span>
+  <span class="stage-ind" id="sind">STAGE 0</span>
+  <button class="theme-btn" id="tbtn" onclick="tgl()"><span id="tico">☀</span><span id="ttxt">LIGHT</span></button>
+</div>
+
+<nav class="side-nav" id="snav">
+  <a class="snd active" href="#h"></a>
+  <a class="snd" href="#s0"></a>
+  <a class="snd" href="#s1"></a>
+  <a class="snd" href="#s2"></a>
+  <a class="snd" href="#s3"></a>
+  <a class="snd" href="#s4"></a>
+  <a class="snd" href="#s5"></a>
+  <a class="snd" href="#s6"></a>
+  <a class="snd" href="#s7"></a>
+  <a class="snd" href="#s8"></a>
+  <a class="snd" href="#s9"></a>
+  <a class="snd" href="#s10"></a>
+  <a class="snd" href="#s11"></a>
+  <a class="snd" href="#s12"></a>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="h">
+  <div class="eyebrow">First Principles · Architecture · No Marketing</div>
+  <h1>Integration is<br><span>managing failure,</span><br>not connecting services.</h1>
+  <p class="hero-sub">A first-principles guide to Azure messaging and integration — built around the assumption that every component will fail, every network will partition, every clock will drift.</p>
+  <div class="scrl">
+    <svg width="14" height="18" viewBox="0 0 14 18" fill="none"><path d="M7 1v16M1 11l6 6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    SCROLL
+  </div>
+</section>
+
+<!-- STAGE 0 -->
+<div class="sdiv"></div>
+<section class="stage" id="s0">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 0 · Foundational Assumption</div>
+      <h2>Distributed systems fail by default.</h2>
+      <p class="narr">Networks drop packets. Services restart mid-request. Clocks drift. Messages duplicate. These are not edge cases — they are the baseline. Every integration pattern exists to answer one question: <em>what happens when something fails mid-flight?</em></p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>If your architecture hasn't answered the failure question, it has answered it implicitly — usually with <strong>data loss or corruption</strong>. Reliability must be designed in from day one, not bolted on after an incident.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"My services are on the same Azure region so the network is reliable." Same-region does not eliminate transient DNS failures, VM restarts during platform updates, or packet loss under load.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Designing for failure</strong>: adds complexity and latency. <strong>Ignoring failure</strong>: costs correctness, money, and customer trust. There is no third option.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Failure Taxonomy — animated</div><canvas id="fc" width="360" height="280"></canvas></div>
+  </div>
+</section>
+
+<!-- STAGE 1 -->
+<div class="sdiv"></div>
+<section class="stage" id="s1">
+  <div class="si flip">
+    <div class="fu">
+      <div class="snum">Stage 1 · Mental Model</div>
+      <h2>Not all integration is the same coupling level.</h2>
+      <p class="narr">Every integration pattern sits on a spectrum from tight to fully decoupled. Moving right gains resilience and scale — but adds operational complexity and eventual consistency. <em>Click any row to expand.</em></p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Most outages trace back to a <strong>tightly coupled dependency</strong> that failed and cascaded. Choosing coupling level is the most consequential architectural decision you'll make.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"More decoupling is always better." Full async requires eventual consistency and harder debugging. Use the minimum decoupling that satisfies your availability and throughput requirements.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Tight coupling</strong>: simple, consistent, fragile. <strong>Loose coupling</strong>: resilient, scalable, eventually consistent. Requirements choose, not personal preference.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Coupling Spectrum</div><div id="spviz" style="width:100%;padding-top:.5rem"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 2 -->
+<div class="sdiv"></div>
+<section class="stage" id="s2">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 2 · Core Concept</div>
+      <h2>Temporal coupling is the silent system killer.</h2>
+      <p class="narr">A phone call requires both parties online simultaneously. A text message does not. Direct HTTP calls are phone calls — if the receiver is down, the caller fails. Message queues are texts — the sender moves on, the receiver processes when ready.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>In a chain of 8 synchronous services at 99.9% availability each: <strong>99.9%⁸ ≈ 99.2%</strong>. Decouple with queues and each service operates independently. The math changes fundamentally.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Retry logic solves temporal coupling." Retries shrink the failure window but don't eliminate it. In-memory retry buffers fill up and the caller eventually fails. Queues are the only true solution.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Synchronous</strong>: immediate feedback, simple error handling, fragile under load. <strong>Asynchronous</strong>: resilient, scalable — but requires callers to handle "I'll get back to you" flows.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Sync vs Async — failure propagation</div><div class="cc" id="ccviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 3 -->
+<div class="sdiv"></div>
+<section class="stage" id="s3">
+  <div class="si flip">
+    <div class="fu">
+      <div class="snum">Stage 3 · Structure</div>
+      <h2>A message is an envelope, not just a payload.</h2>
+      <p class="narr">The broker reads the envelope. Only the consumer reads the letter inside. Headers carry routing metadata, correlation IDs for tracing, and idempotency keys for safe retry. The body is opaque bytes to the broker — it never inspects it.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Without a <strong>Correlation ID</strong>, debugging a failed payment across 6 services means joining logs by timestamp — an unreliable guess. One field in the header reconstructs the full journey of any message in any workflow.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"I can put routing logic in the JSON body." The broker ignores your body entirely. Routing must be in headers: <span class="mono">Subject</span>, <span class="mono">SessionId</span>, <span class="mono">Label</span>, or user-defined properties.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Richer headers</strong>: better routing, easier debugging, larger overhead per message. <strong>Minimal headers</strong>: leaner messages, harder incident investigation, lost traceability.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Message Anatomy — in flight</div><div id="evviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 4 -->
+<div class="sdiv"></div>
+<section class="stage" id="s4">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 4 · Guarantees</div>
+      <h2>Exactly-once delivery is mostly an illusion.</h2>
+      <p class="narr">Every distributed broker offers a tradeoff: lose messages occasionally, or deliver them more than once. Exactly-once requires distributed consensus that is extremely expensive. The pragmatic answer is <strong>at-least-once + idempotent consumers</strong>.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>A payment service that isn't idempotent will <strong>double-charge customers</strong> when the broker retries a timed-out message. Store processed MessageIds and short-circuit on duplicates. Design the consumer, not the broker.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Service Bus duplicate detection gives exactly-once." It suppresses identical MessageIds within a time window — it doesn't give you exactly-once processing. A consumer can crash after processing but before completing the lock.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>At-most-once</strong>: fastest, lossy. <strong>At-least-once + idempotency</strong>: the production standard. <strong>Exactly-once appearance</strong>: use the Outbox Pattern, not broker promises.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Delivery Guarantee Comparison</div><div id="drviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 5 -->
+<div class="sdiv"></div>
+<section class="stage" id="s5">
+  <div class="si flip">
+    <div class="fu">
+      <div class="snum">Stage 5 · Queue Pattern</div>
+      <h2>A queue is a deli counter. Customers take a number and wait.</h2>
+      <p class="narr">Workers serve one ticket at a time. Adding workers increases throughput without touching producers. The queue absorbs burst — 10,000 orders in 60 seconds is processed at the sustainable pace of your workers, not the spike rate of your producers.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Without a queue, a traffic spike either crashes your processing service or forces <strong>over-provisioning 24/7</strong> for load that peaks 10 minutes a day. Queues let you provision for average throughput, not peak.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Auto-scaling solves this." New instances take 2–5 minutes to boot. The queue absorbs the burst instantly. Auto-scaling and queues are <em>complements</em>, not alternatives.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Service Bus Queue</strong>: sessions, DLQ, ordering, transactions — rich semantics, higher cost. <strong>Storage Queue</strong>: simpler, cheaper, unlimited depth, no ordering or DLQ. Choose by workflow complexity.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Competing Consumers — Load Leveling</div><div id="qviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 6 -->
+<div class="sdiv"></div>
+<section class="stage" id="s6">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 6 · Pub/Sub Pattern</div>
+      <h2>A topic is a printing press. Every subscriber gets their own edition.</h2>
+      <p class="narr">One message published to a topic creates an independent copy per subscription. Subscribers filter what they care about. The publisher has zero knowledge of who is listening. Fan-out: one event, many independent reactions, zero inter-consumer coupling.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>An OrderPlaced event fans out to inventory, email, fraud, and analytics simultaneously. A topic with 4 subscriptions achieves this with <strong>zero producer code changes</strong> when a new consumer is added.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"I need multiple queues for fan-out." That forces the producer to know every downstream consumer. A topic subscription lets consumers register themselves. The producer stays blissfully ignorant.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Service Bus Topics</strong>: filter rules, sessions, DLQ per subscription, ordering. <strong>Event Grid</strong>: push-based HTTP, lower latency, simpler — but no replay, no ordering, no sessions. Often used together.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Topic Fan-Out — Publish/Subscribe</div><div id="psviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 7 -->
+<div class="sdiv"></div>
+<section class="stage" id="s7">
+  <div class="si flip">
+    <div class="fu">
+      <div class="snum">Stage 7 · Event Streaming</div>
+      <h2>A stream is an append-only log. Not a queue.</h2>
+      <p class="narr">Events are written to partitioned, immutable logs. Multiple consumer groups each maintain their own offset — they read the same data independently. Messages aren't deleted after consumption. You can replay from the beginning. This is fundamentally different from a queue.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>When a fraud model needs retraining on 3 months of transaction history, <strong>replay lets you do this without rebuilding a pipeline</strong>. Queues delete messages after delivery. Streams don't. Choose accordingly.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Event Hubs is just a fast Service Bus." They solve fundamentally different problems. Service Bus is for workflow orchestration. Event Hubs is for high-throughput log ingestion with replay. Not substitutes.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Streams (Event Hubs)</strong>: replay, high throughput, multiple independent readers. <strong>Queues (Service Bus)</strong>: per-message ACK, DLQ, sessions, complex routing. Match the tool to the problem class.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Partitioned Log — Multiple Consumer Groups</div><div id="stviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 8 -->
+<div class="sdiv"></div>
+<section class="stage" id="s8">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 8 · Reliability</div>
+      <h2>Peek-Lock: the safety net under every delivery.</h2>
+      <p class="narr">When a worker fetches a message, the broker locks it — not deletes it. The worker must complete, abandon, or defer it. If the worker crashes, the lock expires and the message reappears. This is how at-least-once delivery actually works under real failure conditions.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Without Peek-Lock, a crash between "receive" and "finish processing" means the message is <strong>permanently gone</strong>. The order lost. The payment unconfirmed. There is no recovery path without re-processing from a compensating source.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"ReceiveAndDelete is a valid performance optimization." It saves one round trip but permanently deletes the message before knowing if processing succeeded. Any crash causes irrecoverable data loss.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Peek-Lock</strong>: safe, one extra round trip, requires correct Complete/Abandon calls. <strong>DLQ</strong>: necessary quarantine — <em>useless if unmonitored</em>. Always set Azure Monitor alerts on DLQ depth.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Peek-Lock Lifecycle + Dead Letter</div><div id="plviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 9 -->
+<div class="sdiv"></div>
+<section class="stage" id="s9">
+  <div class="si flip">
+    <div class="fu">
+      <div class="snum">Stage 9 · Ordering</div>
+      <h2>Competing consumers destroy ordering. Sessions restore it per conversation.</h2>
+      <p class="narr">Worker 1 might process step 3 while Worker 2 is still on step 1. Sessions assign all messages with the same SessionId to one worker at a time — a dedicated lane per customer, per workflow. Full horizontal scale across sessions is preserved.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>A loan workflow — submit → validate → credit-score → approve — must run in sequence per application. <strong>Sessions guarantee this</strong> even with 50 concurrent workers, because each application always routes to one worker at a time.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Sessions guarantee global ordering." Sessions guarantee ordering <em>within</em> a SessionId. Messages across sessions interleave freely. Global ordering requires a single consumer — you've given up horizontal scale.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Sessions</strong>: ordered per conversation, scalable across sessions, requires upfront SessionId design. <strong>No sessions</strong>: maximum concurrency, no ordering guarantees. Design granularity to balance both.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Session Lanes — Ordered per Workflow</div><div id="ssviz" style="width:100%"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 10 -->
+<div class="sdiv"></div>
+<section class="stage" id="s10">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 10 · Atomicity</div>
+      <h2>Either everything happens, or nothing does.</h2>
+      <p class="narr">Completing a message and sending its outcome must sometimes be atomic. Service Bus supports cross-entity transactions — receive from one queue, send to two others, all or nothing. Any failure rolls the entire unit back as if nothing happened.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>A transfer service receives "move $100" and sends "debit A" + "credit B". Crash after debit but before credit: <strong>money disappears</strong>. Transactions prevent this. Without them you design compensating actions — an order of magnitude harder.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Transactions span my database and Service Bus." Service Bus transactions cover only Service Bus entities. For DB + broker atomicity, use the Outbox Pattern: write to DB and outbox table in the same DB transaction, relay separately.</p></div>
+        <div class="ic"><div class="il lt">Tradeoff Lens</div><p><strong>Transactions</strong>: strong correctness, added latency, same namespace only. <strong>Outbox Pattern</strong>: spans DB + broker, eventually consistent, requires relay process. <strong>Sagas</strong>: maximum flexibility, highest complexity.</p></div>
+      </div>
+    </div>
+    <div class="viz fu"><div class="vlabel">Atomic Transaction — interactive</div><div id="txviz" style="width:100%;padding:.3rem 0"></div></div>
+  </div>
+</section>
+
+<!-- STAGE 11 -->
+<div class="sdiv"></div>
+<section class="stage" id="s11">
+  <div class="si" style="grid-template-columns:1fr 1.3fr">
+    <div class="fu">
+      <div class="snum">Stage 11 · Decision Framework</div>
+      <h2>The right tool comes from requirements, not familiarity.</h2>
+      <p class="narr">Choosing by name — "we use Service Bus for everything" — is an architectural smell. Each service solves a different problem at a different scale and cost. The decision starts with your requirements.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Using Service Bus for high-throughput telemetry at 100M+ events/day costs 10–50× more than Event Hubs and hits throughput limits. Wrong tool selection at architecture stage costs 10× to fix in production.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"Event Grid replaces Service Bus." Event Grid is reactive HTTP push — no retry queue, no sessions, no ordering. Service Bus is reliable workflow messaging. They solve different layers and are often used together.</p></div>
+      </div>
+    </div>
+    <div class="viz fu" style="min-height:380px;padding:1rem;justify-content:flex-start;align-items:flex-start;overflow:auto">
+      <div class="vlabel" style="position:static;margin-bottom:.7rem">Service Comparison</div>
+      <div id="ctviz" style="width:100%"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 12 -->
+<div class="sdiv"></div>
+<section class="stage" id="s12">
+  <div class="si">
+    <div class="fu">
+      <div class="snum">Stage 12 · Applied Architecture</div>
+      <h2>Architecture decisions have downstream failure consequences.</h2>
+      <p class="narr">The same integration mistake manifests differently in each domain. These scenarios show how the principles connect to real design choices and what breaks when they're ignored.</p>
+      <div class="ig">
+        <div class="ic"><div class="il lw">Why It Matters</div><p>Financial processing using Event Grid instead of Service Bus has no guaranteed delivery and no DLQ. One network blip silently loses a payment. The consequence of choosing convenience over correctness in the wrong domain.</p></div>
+        <div class="ic"><div class="il lm">Common Misconception</div><p>"We can add reliability later." Retrofitting message ordering, idempotency, and DLQ monitoring into a running production system costs an order of magnitude more than designing it in from day one.</p></div>
+      </div>
+    </div>
+    <div class="viz fu" style="min-height:380px;flex-direction:column;justify-content:flex-start;align-items:flex-start;padding:1.2rem">
+      <div class="vlabel" style="position:static;margin-bottom:.7rem">Real-World Scenarios</div>
+      <div id="sc-tabs" style="display:flex;flex-wrap:wrap;margin-bottom:.7rem"></div>
+      <div id="sc-body" style="width:100%"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STAGE 13 -->
+<div class="sdiv"></div>
+<section class="stage" id="s13">
+  <div class="si single">
+    <div class="fu">
+      <div class="snum">Stage 13 · Boundaries</div>
+      <h2>Knowing what a tool is not matters as much as knowing what it is.</h2>
+      <p class="narr">Messaging systems are frequently misused as databases, schedulers, or RPC mechanisms. Each misuse creates a system that works perfectly — until failure reveals the mismatch between the problem and the tool.</p>
+    </div>
+    <div class="ncg fu" id="ngviz"></div>
+    <div class="ig fu" style="margin-top:1.2rem">
+      <div class="ic"><div class="il lt">The Final Mental Model</div><p>Use messaging for <strong>temporal decoupling, load leveling, fan-out, and reliable delivery under failure</strong>. Use a database for <strong>queryable, consistent, long-lived state</strong>. Use synchronous HTTP for <strong>immediate, consistent feedback</strong>. Most production systems need all three — in the right places.</p></div>
+    </div>
+  </div>
+</section>
+
+<div class="sdiv"></div>
+<footer style="text-align:center;padding:3.5rem 2rem;font-family:'DM Mono',monospace;font-size:.6rem;letter-spacing:.14em;color:var(--muted)">
+  AZURE INTEGRATION &amp; MESSAGING · FIRST PRINCIPLES · ARCHITECT EDITION
+</footer>
+
+<script>
+// ── Theme
+function tgl(){
+  const h=document.documentElement,d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme',d?'light':'dark');
+  document.getElementById('tico').textContent=d?'☽':'☀';
+  document.getElementById('ttxt').textContent=d?'DARK':'LIGHT';
+}
+
+// ── Progress + nav
+const sids=['h','s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','s12','s13'];
+window.addEventListener('scroll',()=>{
+  const pct=window.scrollY/(document.body.scrollHeight-window.innerHeight)*100;
+  document.getElementById('pf').style.width=pct+'%';
+  const dots=document.querySelectorAll('.snd');
+  sids.forEach((id,i)=>{
+    const el=document.getElementById(id);if(!el)return;
+    const r=el.getBoundingClientRect();
+    if(r.top<=window.innerHeight*.5&&r.bottom>=window.innerHeight*.5){
+      dots.forEach(d=>d.classList.remove('active'));
+      if(dots[i])dots[i].classList.add('active');
+      document.getElementById('sind').textContent='STAGE '+(i===0?'HERO':i-1);
+    }
+  });
+  document.querySelectorAll('.fu').forEach(el=>{
+    if(el.getBoundingClientRect().top<window.innerHeight*.88)el.classList.add('in');
+  });
+});
+document.querySelectorAll('.fu').forEach(el=>{
+  if(el.getBoundingClientRect().top<window.innerHeight*.88)el.classList.add('in');
+});
+
+// ── FAILURE CANVAS
+(function(){
+  const c=document.getElementById('fc');if(!c)return;
+  const x=c.getContext('2d'),W=360,H=280;
+  const nodes=[
+    {x:55,y:65,label:'Network Partition',color:'#f87171',f:.8},
+    {x:190,y:48,label:'Clock Drift',color:'#fbbf24',f:1.2},
+    {x:310,y:78,label:'Duplicate Delivery',color:'#a78bfa',f:.65},
+    {x:75,y:185,label:'Process Crash',color:'#f87171',f:1.5},
+    {x:195,y:198,label:'Timeout',color:'#4fc3f7',f:1.0},
+    {x:310,y:175,label:'OOM Kill',color:'#fbbf24',f:.75},
+  ];
+  let t=0;
+  function draw(){
+    x.clearRect(0,0,W,H);
+    nodes.forEach((a,i)=>nodes.forEach((b,j)=>{
+      if(j<=i)return;
+      const d=Math.hypot(b.x-a.x,b.y-a.y);if(d>200)return;
+      const al=(1-d/200)*.14;
+      x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);
+      x.strokeStyle=`rgba(79,195,247,${al})`;x.lineWidth=1;x.stroke();
+    }));
+    nodes.forEach(n=>{
+      const p=.5+.5*Math.sin(t*n.f);
+      const r=17+p*5;
+      const g=x.createRadialGradient(n.x,n.y,0,n.x,n.y,r+8);
+      g.addColorStop(0,n.color+'28');g.addColorStop(1,n.color+'00');
+      x.beginPath();x.arc(n.x,n.y,r+8,0,Math.PI*2);x.fillStyle=g;x.fill();
+      x.beginPath();x.arc(n.x,n.y,r,0,Math.PI*2);
+      x.strokeStyle=n.color;x.lineWidth=1.2*p+.4;x.stroke();
+      x.fillStyle=n.color;x.font='9px DM Mono';x.textAlign='center';
+      x.fillText(n.label,n.x,n.y+r+13);
+    });
+    t+=0.028;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+// ── SPECTRUM
+(function(){
+  const c=document.getElementById('spviz');if(!c)return;
+  const items=[
+    {name:'Direct HTTP',pct:12,color:'#f87171',tag:'SYNCHRONOUS',detail:'Both services must be online simultaneously. Simple, debuggable, catastrophic under failure. Availability = product of all dependencies. Use for: user-facing reads that must be fresh, command-response requiring immediate consistency.'},
+    {name:'Database Polling',pct:28,color:'#fbbf24',tag:'SEMI-SYNC',detail:'Consumer polls a shared table for new rows. Adds DB load, creates a latency floor equal to poll interval. Avoid at scale. Practical for: simple workflows with existing DB infrastructure and low message volume.'},
+    {name:'Message Queue',pct:54,color:'#34d399',tag:'ASYNC',detail:'Producer writes, consumer reads at own pace. One-to-one. Temporal decoupling achieved. Broker holds messages during consumer downtime. Azure: Service Bus Queue, Storage Queue.'},
+    {name:'Pub/Sub Topics',pct:74,color:'#4fc3f7',tag:'ASYNC FANOUT',detail:'One message, many independent subscribers. Each subscription isolated. Adding a consumer requires zero producer change. Azure: Service Bus Topics, Event Grid.'},
+    {name:'Event Streaming',pct:95,color:'#a78bfa',tag:'DECOUPLED LOG',detail:'Append-only log with replay. Consumers maintain own offset. Events persist by time/size, not acknowledgement. Enables analytics, ML retraining, audit. Azure: Event Hubs, Kafka-compatible API.'},
+  ];
+  items.forEach((item,i)=>{
+    c.insertAdjacentHTML('beforeend',`
+      <div class="sp-item" onclick="spTgl(${i})" id="spi${i}">
+        <div class="sp-dot" style="background:${item.color}"></div>
+        <span class="sp-name">${item.name}</span>
+        <div class="sp-bw"><div class="sp-bar" style="width:${item.pct}%"></div></div>
+        <span class="sp-tag">${item.tag}</span>
+      </div>
+      <div class="sp-detail" id="spd${i}">${item.detail}</div>
+    `);
+  });
+  window.spTgl=function(i){
+    document.getElementById('spd'+i).classList.toggle('show');
+    document.getElementById('spi'+i).classList.toggle('open');
+  };
+})();
+
+// ── CALL COMPARISON
+(function(){
+  const c=document.getElementById('ccviz');if(!c)return;
+  c.innerHTML=`
+    <div class="cc-row"><div class="cc-lbl">SYNC — Direct chain failure</div>
+    <div class="cc-track"><div class="nb nd">A: DOWN</div><div class="cline fail"></div><div class="nb nd">B: TIMEOUT</div><div class="cline fail"></div><div class="nb nd">C: TIMEOUT</div><div class="cline fail"></div><div class="nb nd">D: CRASH</div></div></div>
+    <div class="cc-row"><div class="cc-lbl">SYNC — Receiver unavailable</div>
+    <div class="cc-track"><div class="nb na">Service A</div><div class="cline fail"></div><span style="color:var(--danger);font-size:1rem">✕</span><div class="cline fail"></div><div class="nb nd">B: DOWN</div><span style="font-size:.72rem;color:var(--danger);margin-left:.4rem">A fails immediately</span></div></div>
+    <div class="cc-row"><div class="cc-lbl">ASYNC — Temporal decoupling</div>
+    <div class="cc-track"><div class="nb na">Service A</div><div class="cline act" style="position:relative"><div class="pkt"></div></div><div class="nb nk">Broker</div><div class="cline act" style="position:relative"><div class="pkt" style="animation-delay:.9s"></div></div><div class="nb nb2">Service B</div></div></div>
+    <div class="cc-row"><div class="cc-lbl">ASYNC — B offline, A unaffected</div>
+    <div class="cc-track"><div class="nb na">A ✓ continues</div><div class="cline act" style="position:relative"><div class="pkt"></div></div><div class="nb nk">Broker holds</div><div class="cline fail"></div><div class="nb nd">B: DOWN</div><span style="font-size:.72rem;color:var(--accent3);margin-left:.4rem">message safe in broker</span></div></div>
+  `;
+})();
+
+// ── ENVELOPE
+(function(){
+  const c=document.getElementById('evviz');if(!c)return;
+  c.innerHTML=`
+    <div class="ev-h">
+      <div class="ev-st" style="color:var(--accent)">HEADER — Broker reads this</div>
+      <div class="ev-f"><span class="ev-k">MessageId</span><span class="ev-v">msg-7f3a9c21</span></div>
+      <div class="ev-f"><span class="ev-k">CorrelationId</span><span class="ev-v" style="color:var(--accent)">order-2f8e1b</span></div>
+      <div class="ev-f"><span class="ev-k">SessionId</span><span class="ev-v">customer-42</span></div>
+      <div class="ev-f"><span class="ev-k">Subject</span><span class="ev-v">order.placed</span></div>
+      <div class="ev-f"><span class="ev-k">TTL</span><span class="ev-v">30 minutes</span></div>
+      <div class="ev-f"><span class="ev-k">DeliveryCount</span><span class="ev-v" style="color:var(--warn)">1</span></div>
+    </div>
+    <div class="ev-b">
+      <div class="ev-st" style="color:var(--muted)">BODY — Broker never reads this</div>
+      <div class="ev-op">{"orderId":"ORD-9912","amount":149.99,"currency":"GBP","items":[…]} — opaque bytes to the broker</div>
+    </div>
+    <div class="pipe-track"><div class="pipe-fill"></div><div class="pipe-dot"></div></div>
+    <div style="text-align:center;font-family:'DM Mono',monospace;font-size:.58rem;color:var(--muted);margin-top:.35rem">message in flight through the broker</div>
+  `;
+})();
+
+// ── DELIVERY
+(function(){
+  const c=document.getElementById('drviz');if(!c)return;
+  function ms(arr){return arr.map((t,i)=>`<div class="dm ${t==='ok'?'dok':t==='lost'?'dlost':'ddup'}">${t==='ok'?i+1:t==='lost'?'—':'!'}</div>`).join('');}
+  c.innerHTML=`
+    <div class="dr-row"><div class="dr-hdr"><span class="db damo">AT-MOST-ONCE</span><span style="font-size:.76rem;color:var(--muted)">Fast. Lossy. Fire and forget.</span></div>
+    <div class="dt">${ms(['ok','ok','lost','ok','lost','ok','ok','lost','ok'])}</div>
+    <div class="dn">Messages dropped on crash. For: metrics, telemetry where occasional loss is acceptable.</div></div>
+    <div class="dr-row"><div class="dr-hdr"><span class="db dalo">AT-LEAST-ONCE</span><span style="font-size:.76rem;color:var(--muted)">Safe. May duplicate. Requires idempotency.</span></div>
+    <div class="dt">${ms(['ok','ok','dup','dup','ok','ok','dup','ok','ok'])}</div>
+    <div class="dn">! = duplicate. Consumer must check MessageId before processing to short-circuit repeats.</div></div>
+    <div class="dr-row"><div class="dr-hdr"><span class="db deo">EXACTLY-ONCE</span><span style="font-size:.76rem;color:var(--muted)">Use Outbox Pattern instead.</span></div>
+    <div style="font-size:.8rem;color:var(--muted);line-height:1.6;padding:.2rem 0">Requires distributed 2-phase commit across broker and consumer storage. Adds latency.
+    In practice: <strong style="color:var(--text)">at-least-once + idempotent consumer = functionally equivalent</strong> at far lower cost.</div></div>
+  `;
+})();
+
+// ── QUEUE
+(function(){
+  const c=document.getElementById('qviz');if(!c)return;
+  c.innerHTML=`
+    <div class="qt"><div class="qlbl">QUEUE</div>
+    <div class="qmsgs"><div class="qm">M1</div><div class="qm">M2</div><div class="qm lk">M3🔒</div><div class="qm lk">M4🔒</div><div class="qm">M5</div><div class="qm">M6</div><div class="qm">M7</div></div></div>
+    <div class="wrow"><div class="wi wb"></div><span style="flex:1;font-weight:500">Worker 1</span><span style="font-size:.7rem;color:var(--muted);font-family:'DM Mono',monospace">processing M3</span></div>
+    <div class="wrow"><div class="wi wb"></div><span style="flex:1;font-weight:500">Worker 2</span><span style="font-size:.7rem;color:var(--muted);font-family:'DM Mono',monospace">processing M4</span></div>
+    <div class="wrow"><div class="wi widl"></div><span style="flex:1;font-weight:500">Worker 3</span><span style="font-size:.7rem;color:var(--accent3);font-family:'DM Mono',monospace">idle — will pick M5</span></div>
+    <div style="margin-top:.6rem;font-size:.74rem;color:var(--muted)">Burst of 10,000 messages? Workers drain at sustainable pace. Queue absorbs the spike.<br>
+    <span style="color:var(--accent)">Service Bus Queue</span>: sessions, DLQ, ordering &nbsp;·&nbsp; <span style="color:var(--warn)">Storage Queue</span>: simpler, cheaper, unlimited depth</div>
+  `;
+})();
+
+// ── PUBSUB
+(function(){
+  const c=document.getElementById('psviz');if(!c)return;
+  const subs=[
+    {name:'Inventory Service',filter:'Subject = "order.placed"',d:'0s'},
+    {name:'Email Notifications',filter:'Amount > 50',d:'.3s'},
+    {name:'Fraud Detection',filter:'Country IN ("NG","SY")',d:'.6s'},
+    {name:'Analytics Pipeline',filter:'(all events)',d:'.9s'},
+  ];
+  const st=document.createElement('style');
+  st.textContent='@keyframes mpkt{0%{left:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:28px;opacity:0}}';
+  document.head.appendChild(st);
+  c.innerHTML=`
+    <div class="tp">Topic: <strong>orders</strong> &nbsp;·&nbsp; <span style="font-family:'DM Mono',monospace;font-size:.7rem;color:var(--muted)">1 published → ${subs.length} copies created</span></div>
+    ${subs.map(s=>`<div class="sb">
+      <div class="sbline"><div class="sbpkt" style="animation:mpkt 1.4s linear infinite ${s.d}"></div></div>
+      <span class="sbl">${s.name}</span>
+      <span class="sbf">${s.filter}</span>
+      <span class="sbfan">SUB</span>
+    </div>`).join('')}
+    <div style="margin-top:.6rem;font-size:.74rem;color:var(--muted)">Adding a 5th subscriber requires <strong style="color:var(--text)">zero changes</strong> to the publisher.</div>
+  `;
+})();
+
+// ── STREAM
+(function(){
+  const c=document.getElementById('stviz');if(!c)return;
+  const cols=['rgba(79,195,247,.22)','rgba(167,139,250,.22)','rgba(52,211,153,.22)','rgba(251,191,36,.22)'];
+  const evts=Array.from({length:24},(_,i)=>`<div class="pe" style="background:${cols[i%4]};border:1px solid rgba(255,255,255,.08);color:var(--text)">${i}</div>`).join('');
+  const parts=[{k:'Partition 0',a:'offset:142',b:'offset:119'},{k:'Partition 1',a:'offset:98',b:'offset:87'},{k:'Partition 2',a:'offset:211',b:'offset:198'}];
+  c.innerHTML=`
+    ${parts.map(p=>`<div class="prt"><div class="prtl">${p.k}</div><div class="prtrack"><div class="prevts">${evts}${evts}</div></div></div>`).join('')}
+    <div style="display:flex;gap:.7rem;margin-top:.8rem;flex-wrap:wrap">
+      <div style="background:var(--surface);border:1px solid var(--accent);border-radius:6px;padding:.4rem .75rem">
+        <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--accent);margin-bottom:.25rem">CONSUMER GROUP A</div>
+        ${parts.map(p=>`<div style="font-size:.7rem;color:var(--muted)">${p.k}: ${p.a}</div>`).join('')}
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--accent2);border-radius:6px;padding:.4rem .75rem">
+        <div style="font-family:'DM Mono',monospace;font-size:.58rem;color:var(--accent2);margin-bottom:.25rem">CONSUMER GROUP B</div>
+        ${parts.map(p=>`<div style="font-size:.7rem;color:var(--muted)">${p.k}: ${p.b}</div>`).join('')}
+      </div>
+    </div>
+    <div style="margin-top:.55rem;font-size:.73rem;color:var(--muted)">Each group reads independently at its own offset. Adding Group C doesn't affect A or B. Replay: rewind offset to 0.</div>
+  `;
+})();
+
+// ── PEEK LOCK
+(function(){
+  const c=document.getElementById('plviz');if(!c)return;
+  c.innerHTML=`
+    <div class="pls"><div class="pli">📥</div><div class="pltt">Message received by Worker</div><div class="plst stlk">LOCKED</div></div>
+    <div class="pls hl"><div class="pli">⚙️</div><div class="pltt">Worker processes… lock TTL: 30s</div><div class="plst stlk">IN-FLIGHT</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:.35rem 0">
+      <div>
+        <div style="font-family:'DM Mono',monospace;font-size:.56rem;color:var(--accent3);margin-bottom:.25rem">✓ SUCCESS</div>
+        <div class="pls suc"><div class="pli">✅</div><div class="pltt">Complete() called</div><div class="plst stok">DELETED</div></div>
+      </div>
+      <div>
+        <div style="font-family:'DM Mono',monospace;font-size:.56rem;color:var(--danger);margin-bottom:.25rem">✕ FAILURE</div>
+        <div class="pls dng"><div class="pli">💥</div><div class="pltt">Worker crashes → lock expires</div><div class="plst stfl">RE-QUEUED</div></div>
+      </div>
+    </div>
+    <div class="pls dng"><div class="pli">☠️</div><div class="pltt">MaxDeliveryCount reached (10 attempts)</div><div class="plst stdlq">→ DLQ</div></div>
+    <div style="margin-top:.55rem;background:rgba(248,113,113,.05);border:1px solid rgba(248,113,113,.2);border-radius:6px;padding:.55rem .85rem;font-size:.74rem;color:var(--muted)">
+      <strong style="color:var(--danger)">Dead Letter Queue</strong>: quarantines poison messages automatically. 
+      However, the DLQ monitors nothing itself — you must set Azure Monitor alerts on DLQ depth. An unmonitored DLQ is a business event black hole.
+    </div>
+  `;
+})();
+
+// ── SESSIONS
+(function(){
+  const c=document.getElementById('ssviz');if(!c)return;
+  function lane(cls,id,steps,worker,bc){
+    const msgs=steps.map(s=>`<div class="smsg" style="background:rgba(${bc},.12);border-color:var(${cls==='sa'?'--accent':cls==='sb2'?'--accent2':'--accent3'})">${s}</div>`).join('');
+    return `<div class="slane"><div class="sid ${cls}">${id}</div><div class="smsgs">${msgs}</div><span style="font-size:.6rem;color:var(--muted)">→</span><span style="font-size:.72rem;font-weight:500">${worker}</span></div>`;
+  }
+  c.innerHTML=`
+    ${lane('sa','loan-APP-42',['S1','S2','S3','S4'],'Worker 1 (locked)','79,195,247')}
+    ${lane('sb2','loan-APP-17',['S1','S2','S3'],'Worker 2 (locked)','167,139,250')}
+    ${lane('sc','loan-APP-91',['S1','S2'],'Worker 3 (locked)','52,211,153')}
+    <div style="margin-top:.5rem;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.25);border-radius:6px;padding:.55rem .8rem;font-size:.74rem;color:var(--muted)">
+      <strong style="color:var(--danger)">Without sessions:</strong> Worker 2 might process APP-42/Step3 before Worker 1 finishes Step1. Credit score runs before validation. Workflow corrupted.
+    </div>
+    <div style="margin-top:.5rem;font-size:.73rem;color:var(--muted)">Each session = isolated ordered channel. Scale horizontally <em>across</em> sessions, not within them.</div>
+  `;
+})();
+
+// ── TRANSACTIONS
+(function(){
+  const c=document.getElementById('txviz');if(!c)return;
+  c.innerHTML=`
+    <div style="display:flex;gap:.45rem;margin-bottom:.7rem;flex-wrap:wrap" id="txops">
+      <div class="txop" id="to0"><div class="txopn">RECEIVE</div><div>Transfer $100</div></div>
+      <div class="txop" id="to1"><div class="txopn">SEND</div><div>Debit Account A</div></div>
+      <div class="txop" id="to2"><div class="txopn">SEND</div><div>Credit Account B</div></div>
+      <div class="txop" id="to3"><div class="txopn">COMPLETE</div><div>original msg</div></div>
+    </div>
+    <div style="display:flex;gap:.45rem">
+      <button class="txbtn tcmt" onclick="txSim('cm')">▶ COMMIT</button>
+      <button class="txbtn tfail" onclick="txSim('rb')">▶ SIMULATE CRASH</button>
+    </div>
+    <div id="txr" style="margin-top:.55rem;font-size:.78rem;min-height:1.3rem;color:var(--muted);font-family:'DM Mono',monospace"></div>
+  `;
+  window.txSim=function(m){
+    [0,1,2,3].forEach(i=>document.getElementById('to'+i).className='txop');
+    document.getElementById('txr').textContent='processing…';
+    [0,1,2,3].forEach((i,_)=>{
+      setTimeout(()=>{document.getElementById('to'+i).className='txop '+(m==='cm'?'cm':'rb');},i*240);
+    });
+    setTimeout(()=>{
+      const r=document.getElementById('txr');
+      r.textContent=m==='cm'?'✓ All 4 ops committed atomically. Money moved.':'✕ Crash on step 3. All ops rolled back. Transfer msg returns to queue.';
+      r.style.color=m==='cm'?'var(--accent3)':'var(--danger)';
+    },4*240+80);
+  };
+})();
+
+// ── COMPARE TABLE
+(function(){
+  const c=document.getElementById('ctviz');if(!c)return;
+  const rows=[
+    {svc:'Service Bus',use:'Workflow, sessions, DLQ, transactions, ordering',not:'High-throughput streaming',scale:'~10K msg/s',cost:'$$'},
+    {svc:'Event Hubs',use:'Telemetry, log ingestion, replay, Kafka compat',not:'Per-msg ACK, sessions, DLQ',scale:'1M+ events/s',cost:'$'},
+    {svc:'Event Grid',use:'Reactive push, HTTP webhooks, Azure resource events',not:'Guaranteed delivery, ordering, replay',scale:'10M events/s',cost:'$'},
+    {svc:'Storage Queue',use:'Simple async, massive backlog (unlimited)',not:'Sessions, ordering, DLQ, rich routing',scale:'~2K msg/s',cost:'¢'},
+    {svc:'Logic Apps',use:'Orchestration, SaaS connectors, visual workflows',not:'High-throughput, custom code logic',scale:'Moderate',cost:'$$$'},
+    {svc:'API Management',use:'Gateway, auth, rate limiting, request transformation',not:'Async messaging, event fan-out',scale:'Very high',cost:'$$$'},
+  ];
+  c.innerHTML=`<table class="ctbl"><thead><tr><th>Service</th><th>Use When</th><th>Not When</th><th>Scale</th><th>Cost</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="tsvc">${r.svc}</td><td>${r.use}</td><td style="color:var(--danger)">${r.not}</td><td style="font-family:'DM Mono',monospace;font-size:.7rem">${r.scale}</td><td style="font-family:'DM Mono',monospace">${r.cost}</td></tr>`).join('')}
+  </tbody></table>`;
+})();
+
+// ── SCENARIOS
+(function(){
+  const tabs=document.getElementById('sc-tabs'),body=document.getElementById('sc-body');
+  if(!tabs||!body)return;
+  const scenarios=[
+    {name:'E-Commerce',svc:'Service Bus Topics',why:'OrderPlaced fans out to inventory, email, fraud, analytics independently. Session per order for workflow ordering.',fail:'DLQ on each subscription. Idempotent consumers using OrderId. Saga for compensation.',scale:'Horizontal workers per subscription. Queue depth drives auto-scale.'},
+    {name:'Case Management',svc:'Service Bus Queue + Sessions',why:'Case steps must be ordered per case. Sessions lock one case to one worker. Workers scale across cases in parallel.',fail:'MaxDeliveryCount + DLQ quarantine. Peek-Lock prevents message loss on worker crash.',scale:'More sessions = more parallel cases. Single worker per session ensures ordering.'},
+    {name:'IoT Telemetry',svc:'Event Hubs',why:'1M+ events/second. Append-only log. Stream Analytics for real-time alerts. Data Lake for replay and ML retraining.',fail:'Partition-level consumer groups isolate failures. Consumer checkpointing survives restarts.',scale:'Add partitions for throughput. Consumer groups for independent processing pipelines.'},
+    {name:'Financial Processing',svc:'Service Bus + Outbox Pattern',why:'Transactions required. DB write + message send must be atomic. At-least-once + idempotent consumers on TransactionId.',fail:'Outbox Pattern for DB-broker atomicity. DLQ + alerts on depth. Saga compensation for multi-step workflows.',scale:'Session per account for ordering. Scale workers horizontally across account sessions.'},
+  ];
+  scenarios.forEach((s,i)=>{
+    const t=document.createElement('button');
+    t.className='sc-tab'+(i===0?' act':'');
+    t.textContent=s.name;
+    t.onclick=()=>{
+      document.querySelectorAll('.sc-tab').forEach(x=>x.classList.remove('act'));
+      t.classList.add('act');
+      document.querySelectorAll('.sc-content').forEach(x=>x.classList.remove('show'));
+      document.getElementById('sc'+i).classList.add('show');
+    };
+    tabs.appendChild(t);
+    const d=document.createElement('div');
+    d.className='sc-content'+(i===0?' show':'');
+    d.id='sc'+i;
+    d.innerHTML=`<div class="sg">
+      <div class="scd"><div class="scdl">Recommended Service</div><div class="scdv" style="color:var(--accent);font-weight:600">${s.svc}</div></div>
+      <div class="scd"><div class="scdl">Why This Service</div><div class="scdv">${s.why}</div></div>
+      <div class="scd"><div class="scdl">Failure Considerations</div><div class="scdv" style="color:var(--warn)">${s.fail}</div></div>
+      <div class="scd"><div class="scdl">Scaling Model</div><div class="scdv">${s.scale}</div></div>
+    </div>`;
+    body.appendChild(d);
+  });
+})();
+
+// ── NOT GRID
+(function(){
+  const c=document.getElementById('ngviz');if(!c)return;
+  const items=[
+    {t:'Not a Database',w:'Messages disappear after acknowledgement. No ad-hoc queries, no update-in-place, no long-lived queryable state. Use a database for state. Use messaging for events.'},
+    {t:'Not a Task Scheduler',w:'Scheduled triggers belong to Azure Functions timer bindings or Logic Apps recurrence. A message with a future enqueue time is a workaround, not a design.'},
+    {t:'Not Synchronous RPC',w:'Request-reply over a queue adds complexity with no benefit over HTTP when both parties are online. Use messaging for asynchrony, HTTP for synchrony.'},
+    {t:'Not Exactly-Once',w:'At-least-once + idempotent consumers is the correct model. Believing the broker guarantees exactly-once leads to double-processing bugs that only surface under failure.'},
+  ];
+  c.innerHTML=items.map(i=>`<div class="nc"><div class="nct">${i.t}</div><div class="ncw">${i.w}</div></div>`).join('');
+})();
+</script>
+</body>
+</html>
