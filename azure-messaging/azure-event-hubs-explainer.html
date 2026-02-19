@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Event Hubs — From First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,700;1,300;1,400&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   TOKENS & THEMES
+═══════════════════════════════════════════ */
+:root {
+  --transition: background .35s ease, color .35s ease, border-color .35s ease;
+}
+
+[data-theme="dark"] {
+  --bg:       #0b0c10;
+  --bg2:      #10121a;
+  --bg3:      #171a25;
+  --surface:  #1c1f2e;
+  --border:   #252a3c;
+  --border2:  #2f3550;
+  --text:     #dde3f4;
+  --muted:    #5e6a8a;
+  --faint:    #323855;
+  --accent:   #4f9cf9;
+  --electric: #6ea8fe;
+  --purple:   #9d74f5;
+  --cyan:     #22d3ee;
+  --green:    #34d399;
+  --amber:    #fbbf24;
+  --red:      #f87171;
+  --glow-a:   rgba(79,156,249,.15);
+  --glow-p:   rgba(157,116,245,.12);
+  --card-bg:  rgba(28,31,46,.85);
+  --mono:     'DM Mono', monospace;
+  --display:  'Fraunces', serif;
+  --body:     'Outfit', sans-serif;
+}
+
+[data-theme="light"] {
+  --bg:       #f7f8fc;
+  --bg2:      #eef0f8;
+  --bg3:      #e3e7f5;
+  --surface:  #ffffff;
+  --border:   #d0d6eb;
+  --border2:  #b8c0d8;
+  --text:     #1a1f36;
+  --muted:    #6b758f;
+  --faint:    #dde3f5;
+  --accent:   #1d58c7;
+  --electric: #1a4db3;
+  --purple:   #6d3ad4;
+  --cyan:     #0891b2;
+  --green:    #059669;
+  --amber:    #b45309;
+  --red:      #dc2626;
+  --glow-a:   rgba(29,88,199,.08);
+  --glow-p:   rgba(109,58,212,.07);
+  --card-bg:  rgba(255,255,255,.9);
+  --mono:     'DM Mono', monospace;
+  --display:  'Fraunces', serif;
+  --body:     'Outfit', sans-serif;
+}
+
+/* ═══════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: var(--body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  overflow-x: hidden;
+  transition: var(--transition);
+}
+
+/* ═══════════════════════════════════════════
+   PROGRESS + TOPBAR
+═══════════════════════════════════════════ */
+#progress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--purple), var(--cyan));
+  z-index: 600; transition: width .12s linear;
+}
+
+.topbar {
+  position: fixed; top: 2px; left: 0; right: 0; z-index: 500;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .65rem 2rem;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  transition: var(--transition);
+}
+.topbar-brand {
+  font-family: var(--mono);
+  font-size: .62rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted);
+}
+.topbar-right { display: flex; align-items: center; gap: 1.25rem; }
+.stage-indicator {
+  font-family: var(--mono);
+  font-size: .6rem; letter-spacing: .12em;
+  color: var(--accent);
+}
+
+/* TOGGLE — Light Switch Style */
+.ls-wrap {
+  display: flex; align-items: center; gap: .55rem;
+  font-family: var(--mono); font-size: .58rem;
+  color: var(--muted); letter-spacing: .08em; cursor: pointer;
+}
+.ls-outer {
+  width: 46px; height: 26px; border-radius: 13px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  position: relative; cursor: pointer;
+  transition: background .3s, border-color .3s;
+}
+.ls-inner {
+  position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--muted);
+  transition: transform .3s, background .3s;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; line-height: 1;
+}
+[data-theme="light"] .ls-outer { background: var(--accent); border-color: var(--accent); }
+[data-theme="light"] .ls-inner { transform: translateX(20px); background: #fff; }
+
+/* ═══════════════════════════════════════════
+   SIDE NAV DOTS
+═══════════════════════════════════════════ */
+.sidenav {
+  position: fixed; right: 1.4rem; top: 50%;
+  transform: translateY(-50%);
+  z-index: 300;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.sidenav a {
+  display: block; width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--border2);
+  text-decoration: none;
+  transition: all .25s; cursor: pointer;
+}
+.sidenav a.active { background: var(--accent); transform: scale(2); }
+.sidenav a:hover { background: var(--muted); }
+
+/* ═══════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════ */
+.hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  text-align: center;
+  padding: 7rem 2rem 5rem;
+  position: relative; overflow: hidden;
+}
+.hero-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 65% 50% at 50% 0%, rgba(79,156,249,.09) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 20% 80%, rgba(157,116,245,.07) 0%, transparent 60%),
+    radial-gradient(ellipse 30% 25% at 80% 60%, rgba(34,211,238,.05) 0%, transparent 50%);
+}
+.hero-eyebrow {
+  font-family: var(--mono);
+  font-size: .65rem; letter-spacing: .25em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1.5rem;
+}
+.hero-title {
+  font-family: var(--display);
+  font-size: clamp(2.8rem, 6.5vw, 5.2rem);
+  font-weight: 300; line-height: 1.08;
+  letter-spacing: -.025em;
+  margin-bottom: 1.5rem;
+  max-width: 820px;
+}
+.hero-title em {
+  font-style: italic;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 50%, var(--cyan) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  max-width: 540px; font-size: 1rem; font-weight: 300;
+  color: var(--muted); margin-bottom: 3.5rem; line-height: 1.85;
+}
+.hero-tags {
+  display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 3rem;
+}
+.hero-tag {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .1em;
+  padding: .28rem .7rem; border-radius: 4px;
+  border: 1px solid var(--border2); color: var(--muted);
+  background: var(--surface);
+}
+.scroll-hint {
+  display: flex; flex-direction: column; align-items: center; gap: .4rem;
+  font-family: var(--mono); font-size: .58rem;
+  letter-spacing: .16em; color: var(--muted);
+  animation: bob 2.4s ease-in-out infinite;
+}
+@keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
+
+/* ═══════════════════════════════════════════
+   STAGE LAYOUT
+═══════════════════════════════════════════ */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 0 6rem;
+}
+.stage {
+  min-height: 100vh;
+  display: flex; align-items: center;
+  padding: 5.5rem 2rem 4rem;
+}
+.stage-inner {
+  max-width: 1120px; width: 100%; margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem; align-items: start;
+}
+.stage-inner.rev { direction: rtl; }
+.stage-inner.rev > * { direction: ltr; }
+.stage-inner.full { grid-template-columns: 1fr; max-width: 860px; }
+
+/* fade-up animation */
+.fu {
+  opacity: 0; transform: translateY(24px);
+  transition: opacity .55s ease, transform .55s ease;
+}
+.fu.delay-1 { transition-delay: .1s; }
+.fu.delay-2 { transition-delay: .2s; }
+.fu.in { opacity: 1; transform: translateY(0); }
+
+/* ═══════════════════════════════════════════
+   TEXT COMPONENTS
+═══════════════════════════════════════════ */
+.stg-no {
+  font-family: var(--mono); font-size: .6rem;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: .6rem; opacity: .75;
+}
+.stage h2 {
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 2.8vw, 2.25rem);
+  font-weight: 300; line-height: 1.2;
+  letter-spacing: -.02em; margin-bottom: 1.1rem;
+}
+.narr {
+  font-size: .975rem; font-weight: 300;
+  color: var(--muted); margin-bottom: 1.5rem;
+  line-height: 1.9;
+}
+.narr strong { color: var(--text); font-weight: 500; }
+.narr em { color: var(--accent); font-style: normal; font-weight: 500; }
+
+.insight-stack { display: flex; flex-direction: column; gap: .5rem; }
+.insight-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: .85rem 1.1rem;
+  transition: border-color .2s, background .3s;
+}
+.insight-card:hover { border-color: var(--accent); }
+.ic-label {
+  font-family: var(--mono); font-size: .56rem;
+  letter-spacing: .16em; text-transform: uppercase;
+  margin-bottom: .28rem;
+}
+.ic-why { color: var(--green); }
+.ic-mis { color: var(--amber); }
+.ic-trade { color: var(--purple); }
+.insight-card p {
+  font-size: .83rem; color: var(--muted); line-height: 1.65;
+}
+.insight-card p strong { color: var(--text); font-weight: 500; }
+
+/* ═══════════════════════════════════════════
+   VISUAL BOXES
+═══════════════════════════════════════════ */
+.vbox {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.5rem;
+  overflow: hidden; position: relative;
+  transition: var(--transition);
+}
+.vbox-title {
+  font-family: var(--mono); font-size: .58rem;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1.1rem;
+}
+.vbox canvas { display: block; max-width: 100%; }
+
+/* Glow aura */
+.vbox::before {
+  content: ''; position: absolute;
+  top: -40%; left: -20%; width: 70%; height: 70%;
+  background: var(--glow-a);
+  filter: blur(60px); pointer-events: none;
+  border-radius: 50%;
+}
+
+/* ═══════════════════════════════════════════
+   INLINE HELPERS
+═══════════════════════════════════════════ */
+.hl  { color: var(--accent); font-weight: 500; }
+.hlp { color: var(--purple); font-weight: 500; }
+.hlg { color: var(--green); font-weight: 500; }
+.hlc { color: var(--cyan); font-weight: 500; }
+.hlr { color: var(--red); font-weight: 500; }
+.hla { color: var(--amber); font-weight: 500; }
+.mono-inline {
+  font-family: var(--mono); font-size: .78em;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 3px; padding: .08em .35em;
+}
+
+/* ═══════════════════════════════════════════
+   STAGE-SPECIFIC VISUAL COMPONENTS
+═══════════════════════════════════════════ */
+
+/* Architecture comparison (Stage 1) */
+.arch-compare { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; }
+.arch-col {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: .85rem .75rem;
+  text-align: center;
+}
+.arch-col.highlight { border-color: var(--accent); background: rgba(79,156,249,.05); }
+.arch-col-title {
+  font-family: var(--mono); font-size: .6rem;
+  letter-spacing: .1em; text-transform: uppercase;
+  margin-bottom: .7rem;
+}
+.arch-col.highlight .arch-col-title { color: var(--accent); }
+
+/* Log visualization */
+.log-row {
+  display: flex; align-items: center; gap: 0;
+  margin-bottom: .5rem; position: relative;
+}
+.log-segment {
+  flex: 1; height: 36px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: .62rem;
+  border: 1px solid var(--border); margin: 0 1px;
+  transition: all .3s;
+}
+
+/* Partition lanes */
+.partition-lane {
+  display: flex; align-items: center; gap: 2px;
+  margin-bottom: .45rem; position: relative;
+}
+.pl-label {
+  font-family: var(--mono); font-size: .58rem;
+  letter-spacing: .08em; color: var(--muted);
+  min-width: 56px; flex-shrink: 0;
+}
+.pl-slot {
+  width: 30px; height: 24px; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: .58rem; border: 1px solid;
+}
+
+/* Consumer group reader */
+.cg-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .65rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: .4rem;
+}
+.cg-bookmark {
+  font-family: var(--mono); font-size: .62rem;
+  padding: .15rem .45rem; border-radius: 4px;
+  background: var(--faint); border: 1px solid var(--border2);
+}
+.cg-name { font-size: .78rem; font-weight: 500; flex: 1; }
+.cg-offset {
+  font-family: var(--mono); font-size: .62rem;
+  color: var(--accent);
+}
+
+/* Throughput meters */
+.meter-row {
+  display: flex; align-items: center; gap: .7rem;
+  margin-bottom: .55rem;
+}
+.meter-label {
+  font-family: var(--mono); font-size: .6rem;
+  color: var(--muted); min-width: 65px;
+}
+.meter-track {
+  flex: 1; height: 8px; background: var(--border);
+  border-radius: 4px; overflow: hidden;
+}
+.meter-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  transition: width 1.2s ease;
+}
+.meter-val {
+  font-family: var(--mono); font-size: .62rem;
+  color: var(--accent); min-width: 42px; text-align: right;
+}
+
+/* Compare table */
+.ctbl { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.ctbl th {
+  font-family: var(--mono); font-size: .56rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted);
+  text-align: left; padding: .45rem .65rem;
+  border-bottom: 1px solid var(--border);
+}
+.ctbl td {
+  padding: .5rem .65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  color: var(--muted); vertical-align: top; font-size: .8rem;
+}
+.ctbl tr:hover td { color: var(--text); background: var(--bg3); }
+.ctbl .td-svc { font-weight: 600; color: var(--text); white-space: nowrap; }
+
+/* Scenario tabs */
+.scenario-tabs { display: flex; gap: .4rem; margin-bottom: .85rem; flex-wrap: wrap; }
+.stab {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .08em;
+  padding: .35rem .75rem; border-radius: 5px;
+  border: 1px solid var(--border); cursor: pointer;
+  background: transparent; color: var(--muted);
+  transition: all .2s;
+}
+.stab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.scenario-panel { display: none; }
+.scenario-panel.show { display: block; }
+.sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .5rem; }
+.sc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; padding: .7rem .85rem;
+}
+.sc-card-title {
+  font-family: var(--mono); font-size: .57rem; letter-spacing: .12em;
+  text-transform: uppercase; margin-bottom: .3rem;
+}
+.sc-card p { font-size: .76rem; color: var(--muted); line-height: 1.6; }
+.sc-why .sc-card-title { color: var(--green); }
+.sc-fail .sc-card-title { color: var(--red); }
+.sc-scale .sc-card-title { color: var(--accent); }
+.sc-part .sc-card-title { color: var(--purple); }
+
+/* Not-grid */
+.not-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .75rem; }
+.not-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: .75rem .95rem;
+  transition: border-color .2s;
+}
+.not-card:hover { border-color: var(--red); }
+.not-title { font-size: .82rem; font-weight: 600; color: var(--red); margin-bottom: .3rem; }
+.not-body { font-size: .77rem; color: var(--muted); line-height: 1.6; }
+
+/* Replay scrubber */
+.scrubber-wrap { margin-top: .6rem; }
+.scrubber-track {
+  height: 4px; background: var(--border); border-radius: 2px;
+  margin-bottom: .35rem; position: relative; cursor: pointer;
+}
+.scrubber-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple)); border-radius: 2px; transition: width .15s; }
+.scrubber-thumb {
+  position: absolute; top: 50%; width: 12px; height: 12px;
+  background: var(--accent); border-radius: 50%;
+  transform: translate(-50%,-50%); cursor: grab;
+  transition: left .15s;
+}
+.scrubber-input {
+  width: 100%; opacity: 0; position: absolute; inset: -4px 0;
+  cursor: pointer; margin: 0;
+}
+.scrubber-labels {
+  display: flex; justify-content: space-between;
+  font-family: var(--mono); font-size: .58rem; color: var(--muted);
+}
+.replay-events { margin-top: .75rem; }
+.re-row {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .3rem .55rem;
+  border-radius: 4px; margin-bottom: .22rem;
+  font-family: var(--mono); font-size: .65rem;
+  transition: opacity .3s, background .3s;
+}
+
+/* Pipeline downstream */
+.pipeline-row {
+  display: flex; align-items: center; gap: .35rem;
+  margin-bottom: .5rem;
+}
+.pipe-source {
+  padding: .4rem .75rem; border-radius: 6px;
+  font-family: var(--mono); font-size: .65rem;
+  border: 1px solid var(--accent); color: var(--accent);
+  background: rgba(79,156,249,.07);
+}
+.pipe-arrow { color: var(--muted); font-size: .75rem; }
+.pipe-dest {
+  padding: .38rem .65rem; border-radius: 6px;
+  font-family: var(--mono); font-size: .65rem;
+  border: 1px solid; flex: 1;
+}
+.pd-blue  { border-color: var(--accent); color: var(--accent); background: rgba(79,156,249,.05); }
+.pd-green { border-color: var(--green); color: var(--green); background: rgba(52,211,153,.05); }
+.pd-purple{ border-color: var(--purple); color: var(--purple); background: rgba(157,116,245,.05); }
+.pd-cyan  { border-color: var(--cyan); color: var(--cyan); background: rgba(34,211,238,.05); }
+.pipe-dot-anim {
+  position: relative; overflow: hidden;
+}
+.pipe-dot-anim::after {
+  content: ''; position: absolute;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); top: 50%; margin-top: -3px;
+  animation: pdot 2s linear infinite;
+}
+@keyframes pdot {
+  0%{left:-10px;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:calc(100% + 5px);opacity:0}
+}
+
+/* Ordering diagram */
+.ord-part {
+  display: flex; align-items: center; gap: 3px;
+  padding: .5rem .65rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: .38rem;
+}
+.ord-label {
+  font-family: var(--mono); font-size: .6rem;
+  color: var(--muted); min-width: 70px; flex-shrink: 0;
+}
+.ord-msg {
+  width: 28px; height: 22px; border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: .6rem;
+  border: 1px solid;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════ */
+footer {
+  text-align: center; padding: 4rem 2rem;
+  font-family: var(--mono); font-size: .6rem;
+  letter-spacing: .14em; color: var(--muted);
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════ */
+@media(max-width:768px){
+  .stage-inner{ grid-template-columns:1fr; gap:2.2rem; }
+  .stage-inner.rev{ direction:ltr; }
+  .sidenav{ display:none; }
+  .arch-compare{ grid-template-columns:1fr; }
+  .not-grid{ grid-template-columns:1fr; }
+  .sc-grid{ grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <span class="topbar-brand">Azure Event Hubs · First Principles</span>
+  <div class="topbar-right">
+    <span class="stage-indicator" id="stageInd">INTRO</span>
+    <label class="ls-wrap" onclick="toggleTheme()">
+      <span id="tl-dark">DARK</span>
+      <div class="ls-outer">
+        <div class="ls-inner" id="ls-thumb">🌙</div>
+      </div>
+      <span id="tl-light">LIGHT</span>
+    </label>
+  </div>
+</header>
+
+<!-- SIDE NAV -->
+<nav class="sidenav" id="sideNav">
+  <a href="#hero" class="active"></a>
+  <a href="#s0"></a><a href="#s1"></a><a href="#s2"></a><a href="#s3"></a>
+  <a href="#s4"></a><a href="#s5"></a><a href="#s6"></a><a href="#s7"></a>
+  <a href="#s8"></a><a href="#s9"></a><a href="#s10"></a><a href="#s11"></a>
+  <a href="#s12"></a>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+     HERO
+═══════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-eyebrow">First Principles · No Marketing · Architect Edition</div>
+  <h1 class="hero-title">Azure Event Hubs<br><em>is not a queue.</em></h1>
+  <p class="hero-sub">It's a distributed, append-only log built for massive event ingestion. Understanding the difference is the difference between elegant architecture and expensive failure.</p>
+  <div class="hero-tags">
+    <span class="hero-tag">13 STAGES</span>
+    <span class="hero-tag">DISTRIBUTED SYSTEMS</span>
+    <span class="hero-tag">FAILURE-FIRST THINKING</span>
+    <span class="hero-tag">ARCHITECT LEVEL</span>
+  </div>
+  <div class="scroll-hint">
+    <svg width="14" height="18" fill="none" viewBox="0 0 14 18"><path d="M7 1v16M1 11l6 6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    SCROLL
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 0 — HARSH REALITY
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s0">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 0 · Foundation</div>
+      <h2>Millions of events per second. Failures every second.</h2>
+      <p class="narr">
+        High-volume systems don't fail occasionally — they fail <strong>continuously at scale</strong>. A single 1MB/s sensor feed is manageable. Ten thousand sensors is a different problem class entirely. 
+        <em>Event Hubs exists because the naive solution — a load balancer forwarding to a fleet of workers — collapses under backpressure, producer bursts, and consumer lag.</em>
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>At 1M events/second, a consumer that takes 1.1ms per event instead of 1ms <strong>falls 100,000 events behind every second</strong>. Without durable buffering, that lag either crashes the consumer or drops events. Both are unacceptable in production.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"We can just scale up our consumers faster." Consumer scaling is bounded by boot time, stateful initialization, and partition count. The producer doesn't wait for your infrastructure team.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Durable buffering decouples producer throughput from consumer capacity.<br><strong>Sacrifice:</strong> Events are now processed with latency. Pure real-time push is gone.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Live ingestion pressure simulation</div>
+      <canvas id="c0" width="420" height="290" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 1 — MESSAGING VS STREAMING
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s1">
+  <div class="stage-inner rev">
+    <div class="fu">
+      <div class="stg-no">Stage 1 · Mental Model</div>
+      <h2>A queue hands you a letter. A log lets you read the newspaper archive.</h2>
+      <p class="narr">
+        Queue-based systems delete messages after acknowledgement. Pub/sub fans one message to subscribers. <strong>Event Hubs is neither.</strong> It's an append-only log — events accumulate on disk, and consumers read at their own pace without affecting each other or the data.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>If you use Event Hubs like a queue — expecting message deletion after consumption — <strong>you will pay retention costs indefinitely</strong> and be confused why "processed" events keep appearing to new consumers. The data model is fundamentally different.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"Event Hubs and Service Bus are interchangeable for messaging." Service Bus has sessions, DLQ, transactions, and message ordering semantics. Event Hubs has replay, high throughput, and partition keys. They solve adjacent but distinct problems.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Multiple consumers, replay, high throughput, no ACK coordination.<br><strong>Sacrifice:</strong> No per-message acknowledgement, no DLQ, no routing predicates, no sessions.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Three primitives compared — click to explore</div>
+      <div id="arch-compare-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 2 — THE LOG
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s2">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 2 · Core Model</div>
+      <h2>The commit log: write once, read many, forget nothing immediately.</h2>
+      <p class="narr">
+        Events are appended sequentially. The write head only moves forward. Nothing is mutated. Nothing is deleted until the retention window expires. 
+        <strong>Every consumer tracks its own position in the log — the broker tracks nothing on their behalf.</strong>
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>This model is what makes replay possible. Because the log is immutable and retention-based, you can rewind to any point within the window and re-process events <strong>without affecting any other consumer</strong>. A queue deletes after ACK — replay is impossible.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"The broker knows what I've processed." It doesn't. Event Hubs stores offsets in Azure Blob Storage checkpoints — <strong>your consumer code writes them</strong>. If you don't checkpoint, a restart reprocesses from the beginning of the retention window.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Simplicity — the log never changes structure. Consumers are independent.<br><strong>Sacrifice:</strong> You own checkpoint management. Crash recovery is your responsibility.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Append-only log — moving write head</div>
+      <canvas id="c2" width="420" height="270" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 3 — PARTITIONS
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s3">
+  <div class="stage-inner rev">
+    <div class="fu">
+      <div class="stg-no">Stage 3 · Parallelism</div>
+      <h2>One log cannot scale. Partitions are parallel lanes.</h2>
+      <p class="narr">
+        A single ordered log is a serial bottleneck. Event Hubs splits the log into <em>N</em> partitions — each an independent ordered sequence. Producers hash partition keys to route events. 
+        <strong>Within a partition, order is guaranteed. Across partitions, it is not.</strong>
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>Partition count is <strong>immutable after namespace creation</strong>. If you create 4 partitions and later need 32, you must migrate your data and create a new namespace. Choose partition count based on your peak consumer parallelism target, not current load.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"More partitions = always better." Each partition is a separate lease. More partitions means more threads, more checkpoint overhead, and more complexity. Start with 8–32 for most workloads. Reserve 100+ for genuine high-cardinality streaming.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Horizontal throughput scaling, parallel consumer lanes.<br><strong>Sacrifice:</strong> No global ordering. Bad partition key design causes hot partitions — one overloaded, rest idle.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Partition key routing — animated event distribution</div>
+      <canvas id="c3" width="420" height="290" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 4 — CONSUMER GROUPS
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s4">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 4 · Multi-Consumer</div>
+      <h2>Multiple readers. Independent bookmarks. Zero interference.</h2>
+      <p class="narr">
+        Each consumer group is a <strong>separate view into the same log</strong>. Analytics reads at offset 41,000. Fraud detection is at offset 38,800. Real-time alerting is at offset 41,500. None of them know the others exist, and none affect the log.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>In a queue, you'd need <strong>4 separate queues</strong> for 4 consumers, each receiving its own copy at publish time. With Event Hubs, you add a consumer group with no producer changes, no infrastructure duplication, and independent lag monitoring per group.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"I can have unlimited consumer groups." The default limit is 5 per namespace (Basic/Standard). Premium and Dedicated tiers allow more. Hitting this limit silently causes connection failures — monitor your consumer group count.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Each consumer group operates fully independently — replay one without affecting others.<br><strong>Sacrifice:</strong> Each group multiplies your egress throughput consumption from the broker.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Consumer groups — independent offset tracking</div>
+      <div id="cg-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 5 — OFFSETS AND CHECKPOINTS
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s5">
+  <div class="stage-inner rev">
+    <div class="fu">
+      <div class="stg-no">Stage 5 · Reliability</div>
+      <h2>The broker knows nothing. You own your position.</h2>
+      <p class="narr">
+        An offset is the sequential position of an event in a partition. A checkpoint is when your consumer <strong>writes its current offset to persistent storage</strong> — typically Azure Blob or Azure Table Storage. If you crash between events and your last checkpoint, you reprocess those events. <em>At-least-once delivery is the default outcome of the log model.</em>
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>A consumer that never checkpoints will <strong>restart from the beginning of the retention window on every crash</strong>. For a 7-day retention window with 1M events/day, that's 7 million events to reprocess. The AMQP EventProcessorClient checkpoints automatically — but you must configure the interval.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"Checkpoint after every event = safest option." It's actually the slowest. Checkpointing involves a Blob Storage write. Checkpointing every 500ms or every 1000 events is typically the right tradeoff. Event-by-event checkpointing can reduce throughput by 60%.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Checkpoint control lets you tune the durability/throughput ratio precisely.<br><strong>Sacrifice:</strong> The window between checkpoints is a potential reprocessing window. Your consumer must be idempotent.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Checkpoint crash simulation — click to crash</div>
+      <canvas id="c5" width="420" height="270" style="max-width:100%"></canvas>
+      <div style="text-align:center;margin-top:.65rem">
+        <button onclick="crashConsumer()" style="font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;padding:.38rem .9rem;border-radius:5px;border:1px solid var(--red);color:var(--red);background:transparent;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(248,113,113,.1)'" onmouseout="this.style.background='transparent'">▶ SIMULATE CRASH</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 6 — THROUGHPUT UNITS
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s6">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 6 · Capacity Model</div>
+      <h2>Throughput Units are the dial. Auto-inflate is the safety valve.</h2>
+      <p class="narr">
+        Each Throughput Unit (TU) gives you <strong>1 MB/s ingress and 2 MB/s egress</strong>. Exceed ingress and producers get throttled immediately. Exceed egress and consumers get throttled. Auto-inflate automatically scales TUs upward under load — but scaling <em>down</em> is manual.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>At 5 TUs with 3 consumer groups reading the same 4 MB/s stream: egress = 12 MB/s. You need 6 TUs for egress alone. <strong>Consumer group multiplication is the most common cause of unexpected Event Hubs throttling.</strong> Model egress, not just ingress.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"I can solve throughput limits by adding more partitions." Throughput Units are the limit — not partition count. 32 partitions at 1 TU still caps at 1 MB/s ingress total. Partitions control parallelism; TUs control raw throughput.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Auto-inflate handles burst without manual intervention.<br><strong>Sacrifice:</strong> Auto-inflate only scales up. A silent workload spike can commit you to 20 TUs with no automatic rollback.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Throughput pressure — ingress vs egress</div>
+      <div id="tu-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 7 — AT-LEAST-ONCE
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s7">
+  <div class="stage-inner rev">
+    <div class="fu">
+      <div class="stg-no">Stage 7 · Delivery Semantics</div>
+      <h2>You will receive duplicates. Design for it.</h2>
+      <p class="narr">
+        Event Hubs guarantees at-least-once delivery per consumer group. After a crash between your last checkpoint and the current position, the consumer restarts from the checkpoint. <strong>Every event between the checkpoint and the crash point is redelivered.</strong> There is no exactly-once at the broker level.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>A payment processing consumer that double-counts a transaction on crash-recovery <strong>creates financial discrepancies that are expensive to audit and fix</strong>. Idempotency is not optional — it is the contract you must meet for correctness under the at-least-once model.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"Short checkpoint intervals prevent duplicates." They reduce the reprocessing window but never eliminate it. A crash <em>during</em> a checkpoint write can corrupt the checkpoint itself. Idempotency is the only reliable defense.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> At-least-once is simpler to implement reliably at broker level than exactly-once.<br><strong>Sacrifice:</strong> Every consumer must implement idempotency. That cost is pushed to the application layer.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Crash → redelivery — idempotency required</div>
+      <canvas id="c7" width="420" height="250" style="max-width:100%"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 8 — EVENT REPLAY
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s8">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 8 · Time Travel</div>
+      <h2>The retention window is a time machine for your data.</h2>
+      <p class="narr">
+        Event Hubs retains events for 1–90 days depending on tier. Any consumer group can rewind to any timestamp within that window. <em>This is why Event Hubs suits analytics pipelines</em> — you can reprocess 7 days of clickstream data with a new model without touching the producer.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>A bug in your ML feature pipeline processes 3 days of events incorrectly. With a queue, <strong>those events are gone</strong>. With Event Hubs, you reset the consumer group offset to 3 days ago and reprocess. This is a fundamental operational difference.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"Longer retention = always safer." Retention is billed per GB. 7-day retention on a 10 MB/s stream = 6 TB stored. At Standard pricing, that's meaningful cost. For infinite retention, use Event Hubs Capture + Data Lake — not raw retention.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Reprocess any time window. Debug pipelines with real production data.<br><strong>Sacrifice:</strong> Retention cost scales linearly with throughput × window length. Budget accordingly.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Replay scrubber — rewind the log</div>
+      <div id="replay-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 9 — ORDERING
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s9">
+  <div class="stage-inner rev">
+    <div class="fu">
+      <div class="stg-no">Stage 9 · Ordering Guarantees</div>
+      <h2>Ordered within a lane. Undefined across lanes.</h2>
+      <p class="narr">
+        Within a single partition, events are stored and delivered in the exact order they arrived. Across partitions, there is <strong>no ordering guarantee whatsoever</strong>. A sensor reading at timestamp T may arrive in partition 2 after a reading at T+5ms that landed in partition 3.
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>A financial trade matching engine that routes BUY and SELL orders for the same ticker to different partitions <strong>may process SELL before BUY</strong> and generate phantom fills. Partition key = ticker symbol ensures a full order book per ticker stays in one partition.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"I can use EventHub timestamps to reconstruct global order." Broker timestamps have millisecond resolution and clock skew across brokers. For anything requiring deterministic ordering, you need sequence numbers embedded in the event itself by the producer.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> Strong ordering within a partition with no consensus overhead.<br><strong>Sacrifice:</strong> Hot partitions if cardinality of your partition key is low. High-cardinality keys spread load but complicate joins.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Per-partition ordering vs cross-partition chaos</div>
+      <div id="ord-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 10 — CAPTURE & DOWNSTREAM
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s10">
+  <div class="stage-inner">
+    <div class="fu">
+      <div class="stg-no">Stage 10 · Downstream Systems</div>
+      <h2>Event Hubs as the nerve center — not the terminus.</h2>
+      <p class="narr">
+        Event Hubs Capture writes raw events to Azure Blob Storage or Data Lake Gen2 in Avro format automatically. Downstream, <em>Stream Analytics, Databricks, Synapse, and custom consumers</em> each read independently. <strong>The same stream powers real-time dashboards, ML pipelines, and cold storage simultaneously.</strong>
+      </p>
+      <div class="insight-stack">
+        <div class="insight-card">
+          <div class="ic-label ic-why">↗ Why It Matters</div>
+          <p>Without Capture, your only persistent copy is the retention window. If you need historical analysis beyond that window — or your budget can't support 90-day retention — <strong>Capture is the only way to ensure events survive</strong> the retention expiry.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-mis">⚠ Common Misconception</div>
+          <p>"Capture replaces a consumer group." Capture is a separate, managed consumer that writes Avro files. It doesn't advance the offset of your analytics or processing consumer groups. You can have both Capture and dedicated consumers simultaneously.</p>
+        </div>
+        <div class="insight-card">
+          <div class="ic-label ic-trade">⇌ Tradeoff Lens</div>
+          <p><strong>Gain:</strong> One stream, many downstream use cases. Zero custom plumbing for archival.<br><strong>Sacrifice:</strong> Avro format and blob storage structure require Spark or schema-aware tooling to query efficiently.</p>
+        </div>
+      </div>
+    </div>
+    <div class="vbox fu delay-1">
+      <div class="vbox-title">Stream branching into downstream systems</div>
+      <div id="downstream-viz"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 11 — WHEN NOT TO USE
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s11">
+  <div class="stage-inner full fu">
+    <div class="stg-no">Stage 11 · Boundaries</div>
+    <h2>Event Hubs is not the answer to every messaging problem.</h2>
+    <p class="narr">
+      Misusing Event Hubs as a queue costs you real money and introduces unnecessary complexity. The table below is the decision tool. <strong>Tool fit matters more than brand familiarity.</strong>
+    </p>
+    <div class="vbox" style="padding:1.1rem;margin-top:.75rem">
+      <table class="ctbl">
+        <thead><tr><th>Primitive</th><th>Use When</th><th>Not When</th><th>Relative Cost</th></tr></thead>
+        <tbody>
+          <tr><td class="td-svc">Event Hubs</td><td>High-volume telemetry, streaming, replay, Kafka compat</td><td>Workflows, sessions, DLQ, per-message ACK</td><td>$$</td></tr>
+          <tr><td class="td-svc">Service Bus</td><td>Workflow orchestration, sessions, DLQ, ordered delivery</td><td>High-throughput streams, event replay</td><td>$$$</td></tr>
+          <tr><td class="td-svc">Event Grid</td><td>Reactive push, Azure resource events, HTTP webhooks</td><td>High-throughput streams, consumer lag tolerance</td><td>$</td></tr>
+          <tr><td class="td-svc">Storage Queue</td><td>Simple decoupling, huge backlog, very low cost</td><td>Ordering, sessions, DLQ, throughput &gt;20k msg/s</td><td>$</td></tr>
+          <tr><td class="td-svc">Kafka (self-hosted)</td><td>Full control, infinite retention, cross-DC, custom connectors</td><td>Managed simplicity, Azure-native integrations</td><td>$$$$</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="not-grid" style="margin-top:.75rem">
+      <div class="not-card"><div class="not-title">Not a Task Queue</div><div class="not-body">No message priority, no delay scheduling, no individual message completion. Use Service Bus if a message needs to wait for a specific time or be re-enqueued with backoff.</div></div>
+      <div class="not-card"><div class="not-title">Not a Dead Letter Sink</div><div class="not-body">Poison messages have no native DLQ. You must implement your own quarantine pattern — capture failed offsets and route to a separate error stream manually.</div></div>
+      <div class="not-card"><div class="not-title">Not a Database</div><div class="not-body">The retention window is not queryable storage. You cannot seek by event content, only by offset or timestamp. Use Capture + Data Lake for analytical queries.</div></div>
+      <div class="not-card"><div class="not-title">Not Kafka</div><div class="not-body">Event Hubs exposes a Kafka protocol endpoint but lacks compaction, custom retention per topic, KSQL, and the full Kafka ecosystem. For deep Kafka workloads, run Kafka on AKS.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 12 — REAL WORLD SCENARIOS
+═══════════════════════════════════════════ -->
+<div class="divider"></div>
+<section class="stage" id="s12">
+  <div class="stage-inner full fu">
+    <div class="stg-no">Stage 12 · Architect Scenarios</div>
+    <h2>The same infrastructure, four different problems.</h2>
+    <p class="narr">Four workloads that Event Hubs handles well — each with distinct failure modes, scaling models, and partition strategies.</p>
+    <div class="scenario-tabs" id="scenarioTabs">
+      <button class="stab active" onclick="showScenario(0)">High-Freq Trading</button>
+      <button class="stab" onclick="showScenario(1)">IoT Sensor Ingestion</button>
+      <button class="stab" onclick="showScenario(2)">Clickstream Analytics</button>
+      <button class="stab" onclick="showScenario(3)">App Log Pipeline</button>
+    </div>
+    <div id="scenarios"></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+<footer>AZURE EVENT HUBS · FIRST PRINCIPLES · DISTRIBUTED SYSTEMS FAIL BY DEFAULT</footer>
+
+<script>
+/* ════════════════════════════════════════
+   THEME TOGGLE
+════════════════════════════════════════ */
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  document.getElementById('ls-thumb').textContent = next === 'dark' ? '🌙' : '☀️';
+}
+
+/* ════════════════════════════════════════
+   SCROLL HANDLER
+════════════════════════════════════════ */
+const allIds = ['hero','s0','s1','s2','s3','s4','s5','s6','s7','s8','s9','s10','s11','s12'];
+const stageNames = ['INTRO','STAGE 0','STAGE 1','STAGE 2','STAGE 3','STAGE 4','STAGE 5','STAGE 6',
+  'STAGE 7','STAGE 8','STAGE 9','STAGE 10','STAGE 11','STAGE 12'];
+
+window.addEventListener('scroll', () => {
+  // progress
+  const pct = window.scrollY / (document.body.scrollHeight - window.innerHeight) * 100;
+  document.getElementById('progress').style.width = pct + '%';
+
+  // active dot + stage name
+  const dots = document.querySelectorAll('.sidenav a');
+  allIds.forEach((id, i) => {
+    const el = document.getElementById(id); if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.top <= window.innerHeight * .55 && r.bottom >= window.innerHeight * .55) {
+      dots.forEach(d => d.classList.remove('active'));
+      if (dots[i]) dots[i].classList.add('active');
+      document.getElementById('stageInd').textContent = stageNames[i] || '';
+    }
+  });
+
+  // fade up
+  document.querySelectorAll('.fu').forEach(el => {
+    if (el.getBoundingClientRect().top < window.innerHeight * .88) el.classList.add('in');
+  });
+});
+
+// initial check
+requestAnimationFrame(() => {
+  document.querySelectorAll('.fu').forEach(el => {
+    if (el.getBoundingClientRect().top < window.innerHeight * .88) el.classList.add('in');
+  });
+});
+
+/* ════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════ */
+function css(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+}
+function hexToRgb(v) {
+  const r = css(v);
+  if (r.startsWith('#')) {
+    const n = parseInt(r.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = r.match(/[\d.]+/g);
+  return m ? [+m[0], +m[1], +m[2]] : [100, 100, 200];
+}
+
+/* ════════════════════════════════════════
+   CANVAS 0 — INGESTION PRESSURE
+════════════════════════════════════════ */
+(function() {
+  const canvas = document.getElementById('c0');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0;
+  const producers = [
+    { name: 'IoT Sensors', rate: 45, color: '#4f9cf9' },
+    { name: 'Click Events', rate: 28, color: '#9d74f5' },
+    { name: 'Trade Feeds', rate: 72, color: '#22d3ee' },
+    { name: 'App Logs', rate: 18, color: '#34d399' },
+  ];
+  const particles = [];
+
+  function spawn() {
+    producers.forEach((p, pi) => {
+      if (Math.random() < p.rate / 120) {
+        particles.push({
+          x: 15 + pi * 90, y: 30,
+          tx: W * .62, ty: H * .48,
+          life: 1, speed: .022 + Math.random() * .018,
+          color: p.color, size: 2 + Math.random() * 2, pct: 0
+        });
+      }
+    });
+  }
+
+  function drawFrame() {
+    const bg = document.documentElement.getAttribute('data-theme') === 'dark' ? '#0d0f14' : '#f7f8fc';
+    const textColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#5e6a8a' : '#6b758f';
+    const borderC = document.documentElement.getAttribute('data-theme') === 'dark' ? '#252a3c' : '#d0d6eb';
+    ctx.clearRect(0, 0, W, H);
+
+    // Broker box
+    const bx = W * .55, by = H * .3, bw = W * .38, bh = H * .4;
+    ctx.fillStyle = document.documentElement.getAttribute('data-theme') === 'dark' ? 'rgba(28,31,46,.85)' : 'rgba(255,255,255,.85)';
+    ctx.strokeStyle = '#4f9cf9';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#4f9cf9';
+    ctx.font = 'bold 10px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('EVENT HUB', bx + bw/2, by + bh/2 - 4);
+    ctx.fillStyle = textColor;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.fillText('broker', bx + bw/2, by + bh/2 + 12);
+
+    // Consumers
+    const consumers = ['Analytics', 'ML Pipeline', 'Alerting'];
+    consumers.forEach((c, i) => {
+      const cx2 = W * .96, cy2 = by + bh * (.2 + i * .32);
+      ctx.strokeStyle = borderC;
+      ctx.fillStyle = document.documentElement.getAttribute('data-theme') === 'dark' ? '#1c1f2e' : '#fff';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(cx2 - 50, cy2 - 11, 50, 22, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = textColor;
+      ctx.font = '8px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(c, cx2 - 25, cy2 + 3);
+    });
+
+    // Producer labels
+    producers.forEach((p, pi) => {
+      const px2 = 15 + pi * 90, py2 = 30;
+      ctx.fillStyle = document.documentElement.getAttribute('data-theme') === 'dark' ? '#1c1f2e' : '#fff';
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(px2 - 35, py2 - 12, 70, 22, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = p.color;
+      ctx.font = '8px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(p.name, px2, py2 + 3);
+    });
+
+    // Particles
+    spawn();
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.pct = Math.min(1, p.pct + p.speed);
+      p.x = p.x + (p.tx - p.x) * p.speed * 2;
+      p.y = p.y + (p.ty - p.y) * p.speed * 2;
+      p.life = 1 - p.pct;
+      const dist = Math.hypot(p.x - p.tx, p.y - p.ty);
+      if (dist < 5) { particles.splice(i, 1); continue; }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color + Math.floor(p.life * 255).toString(16).padStart(2,'0');
+      ctx.fill();
+    }
+
+    // Pressure label
+    const pressure = Math.sin(t * .025) * .3 + .65;
+    ctx.fillStyle = pressure > .8 ? '#f87171' : pressure > .6 ? '#fbbf24' : '#34d399';
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(`load: ${Math.round(pressure * 100)}%`, W - 8, H - 8);
+
+    t++;
+    requestAnimationFrame(drawFrame);
+  }
+  drawFrame();
+})();
+
+/* ════════════════════════════════════════
+   ARCH COMPARE VIZ (Stage 1)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('arch-compare-viz'); if (!c) return;
+  const items = [
+    { title: 'QUEUE', color: '#fbbf24', icon: '📬',
+      desc: 'Message deleted after ACK. One consumer per message. Ordering optional.',
+      note: 'Service Bus, Storage Queue',
+      pros: ['Per-message ACK', 'DLQ support', 'Sessions'], cons: ['Single consumer', 'No replay', 'Low throughput'] },
+    { title: 'PUB/SUB', color: '#9d74f5', icon: '📡',
+      desc: 'Fan-out to N subscribers. Broker routes copies. No replay.',
+      note: 'Event Grid, SNS',
+      pros: ['Fan-out', 'HTTP webhooks', 'Zero config'], cons: ['No replay', 'No lag buffer', 'Push only'] },
+    { title: 'LOG', color: '#4f9cf9', icon: '📼',
+      desc: 'Append-only. Consumers track own offset. Replay enabled.',
+      note: 'Event Hubs, Kafka',
+      pros: ['Replay', 'Many consumers', 'High throughput'], cons: ['No DLQ', 'No per-msg ACK', 'Consumer owns offset'], highlight: true },
+  ];
+  c.innerHTML = `<div class="arch-compare">${items.map(it => `
+    <div class="arch-col ${it.highlight ? 'highlight' : ''}">
+      <div class="arch-col-title" style="color:${it.color}">${it.icon} ${it.title}</div>
+      <p style="font-size:.75rem;color:var(--muted);line-height:1.6;margin-bottom:.5rem">${it.desc}</p>
+      <p style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.5rem">${it.note}</p>
+      <div style="font-size:.7rem;color:var(--green);margin-bottom:.2rem">${it.pros.map(p => '+ ' + p).join('<br>')}</div>
+      <div style="font-size:.7rem;color:var(--red);margin-top:.3rem">${it.cons.map(p => '− ' + p).join('<br>')}</div>
+    </div>
+  `).join('')}</div>`;
+})();
+
+/* ════════════════════════════════════════
+   CANVAS 2 — APPEND-ONLY LOG
+════════════════════════════════════════ */
+(function() {
+  const canvas = document.getElementById('c2');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0, writeHead = 6, maxEvents = 14;
+  const events = [];
+  for (let i = 0; i < maxEvents; i++) {
+    events.push({ id: i, filled: i < writeHead });
+  }
+  let consumers = [
+    { name: 'Consumer A', pos: 2, color: '#4f9cf9', speed: .018 },
+    { name: 'Consumer B', pos: 5, color: '#9d74f5', speed: .012 },
+    { name: 'Consumer C', pos: 1, color: '#34d399', speed: .008 },
+  ];
+  let floatPos = consumers.map(c => c.pos);
+  const segW = (W - 60) / maxEvents;
+  const logY = H * .42;
+
+  function drawLog() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textC = dark ? '#5e6a8a' : '#6b758f';
+    const borderC = dark ? '#252a3c' : '#d0d6eb';
+    ctx.clearRect(0, 0, W, H);
+
+    // Grow log
+    if (t % 60 === 0 && writeHead < maxEvents) {
+      events[writeHead].filled = true;
+      writeHead++;
+    }
+
+    // Move consumers
+    consumers.forEach((c, i) => {
+      if (floatPos[i] < writeHead - 1) floatPos[i] += c.speed;
+    });
+
+    // Draw segments
+    events.forEach((ev, i) => {
+      const x = 30 + i * segW;
+      const filled = ev.filled;
+      ctx.fillStyle = filled ? 'rgba(79,156,249,.12)' : (dark ? '#1c1f2e' : '#f8fafc');
+      ctx.strokeStyle = filled ? '#4f9cf9' : borderC;
+      ctx.lineWidth = filled ? 1.5 : 1;
+      ctx.beginPath(); ctx.roundRect(x, logY - 14, segW - 3, 28, 3); ctx.fill(); ctx.stroke();
+      if (filled) {
+        ctx.fillStyle = '#4f9cf9';
+        ctx.font = '8px DM Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(i), x + segW / 2 - 1, logY + 3);
+      }
+    });
+
+    // Write head arrow
+    const whX = 30 + writeHead * segW - segW / 2;
+    ctx.fillStyle = '#22d3ee';
+    ctx.font = '8px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('▼ write', whX, logY - 22);
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(whX, logY - 16); ctx.lineTo(whX, logY - 14); ctx.stroke();
+
+    // Consumers below
+    consumers.forEach((c, i) => {
+      const cx = 30 + floatPos[i] * segW + segW / 2;
+      const cy = logY + 40 + i * 26;
+      ctx.strokeStyle = c.color + '88';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(cx, logY + 16); ctx.lineTo(cx, cy - 8); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = dark ? '#1c1f2e' : '#fff';
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(cx - 42, cy - 10, 84, 20, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = c.color;
+      ctx.font = '8px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${c.name}  @${Math.floor(floatPos[i])}`, cx, cy + 3);
+    });
+
+    // Label
+    ctx.fillStyle = textC;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('← append direction →', 30, H - 8);
+
+    t++;
+    requestAnimationFrame(drawLog);
+  }
+  drawLog();
+})();
+
+/* ════════════════════════════════════════
+   CANVAS 3 — PARTITION ROUTING
+════════════════════════════════════════ */
+(function() {
+  const canvas = document.getElementById('c3');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0;
+  const partColors = ['#4f9cf9', '#9d74f5', '#22d3ee', '#34d399'];
+  const partSlots = [[], [], [], []];
+  const particles = [];
+  const keys = ['user-42', 'sensor-7', 'ticker-BTC', 'device-19', 'user-99', 'sensor-3'];
+
+  // Pre-fill slots
+  for (let p = 0; p < 4; p++) {
+    for (let i = 0; i < 5; i++) partSlots[p].push(i);
+  }
+
+  function hashKey(k) {
+    let h = 0;
+    for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 4;
+  }
+
+  function spawnEvent() {
+    const key = keys[Math.floor(Math.random() * keys.length)];
+    const dest = hashKey(key);
+    particles.push({
+      key, dest,
+      x: 20, y: 25 + Math.random() * (H * .5),
+      tx: W * .55, ty: (H * .12) + dest * (H * .22),
+      pct: 0, speed: .028 + Math.random() * .015,
+      color: partColors[dest]
+    });
+  }
+
+  function draw() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textC = dark ? '#5e6a8a' : '#6b758f';
+    const borderC = dark ? '#252a3c' : '#d0d6eb';
+    ctx.clearRect(0, 0, W, H);
+
+    // Producer label area
+    ctx.fillStyle = dark ? '#1c1f2e' : '#fff';
+    ctx.strokeStyle = borderC;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(5, H*.15, 80, H*.65, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = textC;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRODUCERS', 45, H*.12);
+
+    // Partition lanes
+    for (let p = 0; p < 4; p++) {
+      const py = (H * .08) + p * (H * .22);
+      ctx.fillStyle = dark ? '#1c1f2e' : '#fff';
+      ctx.strokeStyle = partColors[p];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(W*.5, py, W*.45, H*.18, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = partColors[p];
+      ctx.font = 'bold 9px DM Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`P${p}`, W*.52, py + 14);
+      // mini slots
+      for (let s = 0; s < 5; s++) {
+        const sx = W*.52 + 24 + s * 28;
+        ctx.fillStyle = partColors[p] + '25';
+        ctx.strokeStyle = partColors[p] + '88';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(sx, py + 6, 22, 16, 3); ctx.fill(); ctx.stroke();
+      }
+    }
+
+    // Spawn
+    if (t % 40 === 0) spawnEvent();
+
+    // Draw particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.pct += p.speed;
+      const ex = p.x + (p.tx - p.x) * Math.min(1, p.pct * 1.2);
+      const ey = p.y + (p.ty - p.y) * Math.min(1, p.pct * 1.2);
+      if (p.pct > 1.1) { particles.splice(i, 1); continue; }
+
+      // Glow
+      const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, 8);
+      g.addColorStop(0, p.color + 'cc');
+      g.addColorStop(1, p.color + '00');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(ex, ey, 8, 0, Math.PI * 2); ctx.fill();
+
+      ctx.beginPath(); ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.fill();
+
+      // Key label near particle
+      if (p.pct < .6) {
+        ctx.fillStyle = textC;
+        ctx.font = '7px DM Mono, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(p.key, ex + 5, ey - 3);
+      }
+    }
+
+    // Legend
+    ctx.fillStyle = textC;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('hash(partitionKey) → partition index', 8, H - 6);
+
+    t++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ════════════════════════════════════════
+   CG VIZ (Stage 4)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('cg-viz'); if (!c) return;
+  const groups = [
+    { name: 'analytics-cg', offset: 41200, color: '#4f9cf9', lag: 'low' },
+    { name: 'fraud-detection-cg', offset: 38800, color: '#9d74f5', lag: 'medium', warn: true },
+    { name: 'alerts-cg', offset: 41500, color: '#22d3ee', lag: 'none' },
+    { name: 'ml-training-cg', offset: 10400, color: '#34d399', lag: 'high', warn: true },
+  ];
+  const maxOffset = 42000;
+  c.innerHTML = `
+    <div style="font-family:var(--mono);font-size:.58rem;color:var(--muted);margin-bottom:.65rem">
+      Log head: <span style="color:var(--accent)">42,150</span> &nbsp;·&nbsp; Retention: 7 days &nbsp;·&nbsp; 4 partitions
+    </div>
+    ${groups.map(g => `
+      <div class="cg-row" style="${g.warn ? 'border-color:var(--amber)' : ''}">
+        <span class="cg-bookmark" style="border-color:${g.color};color:${g.color}">CG</span>
+        <span class="cg-name">${g.name}</span>
+        <div style="flex:2;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div style="width:${Math.round(g.offset/maxOffset*100)}%;height:100%;background:${g.color};border-radius:2px"></div>
+        </div>
+        <span class="cg-offset">@${g.offset.toLocaleString()}</span>
+        <span style="font-family:var(--mono);font-size:.55rem;padding:.1rem .38rem;border-radius:3px;
+          background:${g.lag==='none'?'rgba(52,211,153,.1)':g.lag==='low'?'rgba(79,156,249,.1)':g.lag==='medium'?'rgba(251,191,36,.1)':'rgba(248,113,113,.1)'};
+          color:${g.lag==='none'?'var(--green)':g.lag==='low'?'var(--accent)':g.lag==='medium'?'var(--amber)':'var(--red)'}
+          ">lag:${g.lag}</span>
+      </div>
+    `).join('')}
+    <div style="margin-top:.65rem;font-size:.76rem;color:var(--muted);line-height:1.6">
+      ml-training-cg is <strong style="color:var(--amber)">30,000 events behind</strong>. 
+      This has zero effect on the other three groups or the producer. 
+      Each consumer group is an entirely independent read cursor.
+    </div>`;
+})();
+
+/* ════════════════════════════════════════
+   CANVAS 5 — CHECKPOINT CRASH
+════════════════════════════════════════ */
+let crashState = 'running', crashT = 0, lastCheckpoint = 8, currentPos = 8;
+const TOTAL_EVENTS = 18;
+
+function crashConsumer() {
+  crashState = 'crashed';
+  setTimeout(() => {
+    crashState = 'recovering';
+    setTimeout(() => { crashState = 'running'; }, 1800);
+  }, 1500);
+}
+
+(function() {
+  const canvas = document.getElementById('c5');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  function draw() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textC = dark ? '#5e6a8a' : '#6b758f';
+    const borderC = dark ? '#252a3c' : '#d0d6eb';
+    ctx.clearRect(0, 0, W, H);
+
+    // Advance position
+    if (crashState === 'running') {
+      if (crashT % 30 === 0 && currentPos < TOTAL_EVENTS - 1) currentPos++;
+      if (crashT % 90 === 0) lastCheckpoint = currentPos;
+    } else if (crashState === 'recovering') {
+      currentPos = lastCheckpoint;
+    }
+
+    const segW = (W - 40) / TOTAL_EVENTS;
+    const logY = H * .38;
+
+    // Draw event segments
+    for (let i = 0; i < TOTAL_EVENTS; i++) {
+      const x = 20 + i * segW;
+      const isProcessed = i < currentPos;
+      const isCheckpointed = i < lastCheckpoint;
+      const isReplay = crashState === 'recovering' && i >= lastCheckpoint && i < currentPos + 2;
+      ctx.fillStyle = isCheckpointed ? 'rgba(52,211,153,.15)' :
+                      isProcessed ? 'rgba(79,156,249,.12)' : (dark ? '#1c1f2e' : '#f8fafc');
+      ctx.strokeStyle = isCheckpointed ? '#34d399' :
+                        isProcessed ? '#4f9cf9' :
+                        isReplay ? '#f87171' : borderC;
+      ctx.lineWidth = isCheckpointed ? 1.5 : 1;
+      ctx.beginPath(); ctx.roundRect(x, logY - 12, segW - 2, 24, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = isCheckpointed ? '#34d399' : isProcessed ? '#4f9cf9' : textC + '55';
+      ctx.font = '8px DM Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(i), x + segW / 2, logY + 3);
+    }
+
+    // Checkpoint marker
+    const cpX = 20 + lastCheckpoint * segW;
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(cpX, logY - 22); ctx.lineTo(cpX, logY + 20); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#34d399';
+    ctx.font = 'bold 8px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('✓ ckpt', cpX, logY - 26);
+
+    // Current position
+    const posX = 20 + currentPos * segW;
+    ctx.strokeStyle = crashState === 'crashed' ? '#f87171' : '#4f9cf9';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(posX, logY - 22); ctx.lineTo(posX, logY + 20); ctx.stroke();
+    ctx.fillStyle = crashState === 'crashed' ? '#f87171' : '#4f9cf9';
+    ctx.fillText(crashState === 'crashed' ? '✕ crash' : '▶ pos', posX, logY - 26);
+
+    // Status label
+    const statusColors = { running: '#34d399', crashed: '#f87171', recovering: '#fbbf24' };
+    const statusLabels = { running: '● running', crashed: '✕ CRASHED — will reprocess from checkpoint', recovering: '↩ recovering — replaying from checkpoint' };
+    ctx.fillStyle = statusColors[crashState];
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(statusLabels[crashState], 20, H - 12);
+
+    // Legend
+    ctx.fillStyle = '#34d399';
+    ctx.fillText('■', 20, H - 28);
+    ctx.fillStyle = textC;
+    ctx.fillText(' checkpointed', 28, H - 28);
+    ctx.fillStyle = '#4f9cf9';
+    ctx.fillText('■', 120, H - 28);
+    ctx.fillStyle = textC;
+    ctx.fillText(' processed', 128, H - 28);
+
+    crashT++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ════════════════════════════════════════
+   TU VIZ (Stage 6)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('tu-viz'); if (!c) return;
+  let ingress = 65, egress = 85;
+
+  function updateMeters() {
+    ingress = Math.min(99, Math.max(20, ingress + (Math.random() - .45) * 8));
+    egress = Math.min(99, Math.max(30, egress + (Math.random() - .4) * 10));
+    const iEl = document.getElementById('m-ingress');
+    const eEl = document.getElementById('m-egress');
+    if (!iEl) return;
+    iEl.style.width = ingress + '%';
+    iEl.parentElement.nextElementSibling.textContent = Math.round(ingress) + '%';
+    iEl.style.background = ingress > 80 ? 'linear-gradient(90deg,#f87171,#fbbf24)' : 'linear-gradient(90deg,var(--accent),var(--cyan))';
+    eEl.style.width = egress + '%';
+    eEl.parentElement.nextElementSibling.textContent = Math.round(egress) + '%';
+    eEl.style.background = egress > 80 ? 'linear-gradient(90deg,#f87171,#fbbf24)' : 'linear-gradient(90deg,var(--purple),var(--accent))';
+    setTimeout(updateMeters, 1200);
+  }
+
+  c.innerHTML = `
+    <div style="margin-bottom:.5rem;font-family:var(--mono);font-size:.65rem;color:var(--muted)">1 TU = 1 MB/s ingress, 2 MB/s egress &nbsp;·&nbsp; Standard tier: max 40 TU</div>
+    <div class="meter-row"><span class="meter-label">INGRESS</span><div class="meter-track"><div class="meter-fill" id="m-ingress" style="width:65%"></div></div><span class="meter-val" id="mv-i">65%</span></div>
+    <div class="meter-row"><span class="meter-label">EGRESS</span><div class="meter-track"><div class="meter-fill" id="m-egress" style="width:85%"></div></div><span class="meter-val" id="mv-e">85%</span></div>
+    <div class="meter-row"><span class="meter-label">STORAGE</span><div class="meter-track"><div class="meter-fill" style="width:42%;background:linear-gradient(90deg,var(--green),var(--cyan))"></div></div><span class="meter-val">42%</span></div>
+    <div class="meter-row"><span class="meter-label">CONNECTIONS</span><div class="meter-track"><div class="meter-fill" style="width:28%;background:linear-gradient(90deg,var(--green),var(--purple))"></div></div><span class="meter-val">28%</span></div>
+    <div style="margin-top:.75rem;padding:.6rem .85rem;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.2);border-radius:7px;font-size:.78rem;color:var(--muted);line-height:1.65">
+      <strong style="color:var(--amber)">Throttle risk:</strong> Egress approaching limit. With 3 consumer groups reading this stream, 
+      effective egress = <strong style="color:var(--text)">ingress × consumer groups</strong>. 
+      Auto-inflate will trigger if sustained above 80% for &gt;60 seconds.
+    </div>`;
+
+  // Wire up live meters
+  document.getElementById('m-ingress').id = 'm-ingress';
+  document.getElementById('m-egress').id = 'm-egress';
+  setTimeout(updateMeters, 1200);
+})();
+
+/* ════════════════════════════════════════
+   CANVAS 7 — REDELIVERY
+════════════════════════════════════════ */
+(function() {
+  const canvas = document.getElementById('c7');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  let t = 0, state = 'normal'; // normal, crashed, replaying
+  let animLoop;
+
+  function draw() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textC = dark ? '#5e6a8a' : '#6b758f';
+    const borderC = dark ? '#252a3c' : '#d0d6eb';
+    ctx.clearRect(0, 0, W, H);
+
+    // Auto-cycle through states
+    const cycle = Math.floor(t / 120) % 3;
+    if (cycle === 0) state = 'normal';
+    else if (cycle === 1) state = 'crashed';
+    else state = 'replaying';
+
+    const events = [{id:10,label:'ev-10'},{id:11,label:'ev-11'},{id:12,label:'ev-12'},{id:13,label:'ev-13'},{id:14,label:'ev-14'}];
+    const segW = (W - 40) / events.length;
+    const logY = 55;
+
+    events.forEach((ev, i) => {
+      const x = 20 + i * segW;
+      const isOk = (state === 'normal' && i < 3) || (state === 'replaying');
+      const isCrash = state === 'crashed' && i === 2;
+      const isDup = state === 'replaying' && (i === 1 || i === 2);
+      ctx.fillStyle = isOk ? 'rgba(79,156,249,.12)' : (dark ? '#1c1f2e' : '#f8fafc');
+      ctx.strokeStyle = isDup ? '#fbbf24' : isOk ? '#4f9cf9' : borderC;
+      ctx.lineWidth = isDup ? 2 : 1;
+      ctx.beginPath(); ctx.roundRect(x, logY - 14, segW - 4, 28, 3); ctx.fill(); ctx.stroke();
+      if (isDup) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 9px DM Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText('DUP', x + segW/2 - 2, logY + 3);
+      } else {
+        ctx.fillStyle = isOk ? '#4f9cf9' : textC;
+        ctx.font = '8px DM Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(ev.label, x + segW/2 - 2, logY + 3);
+      }
+    });
+
+    // Status text
+    const stateInfo = {
+      normal: { label: '● Normal processing — consumer at ev-12', color: '#34d399' },
+      crashed: { label: '✕ CRASH at ev-12 — last checkpoint: ev-10', color: '#f87171' },
+      replaying: { label: '↩ Restart — replaying ev-11, ev-12 (DUPLICATES)', color: '#fbbf24' },
+    };
+    ctx.fillStyle = stateInfo[state].color;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(stateInfo[state].label, 20, 100);
+
+    // Idempotency key box
+    ctx.fillStyle = dark ? '#1c1f2e' : '#fff';
+    ctx.strokeStyle = '#34d399';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(20, 118, W - 40, 50, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#34d399';
+    ctx.font = 'bold 9px DM Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('IDEMPOTENCY GUARD', 32, 136);
+    ctx.fillStyle = textC;
+    ctx.font = '9px DM Mono, monospace';
+    ctx.fillText('if (processedIds.has(event.id)) return skip;', 32, 152);
+    ctx.fillText('else processedIds.add(event.id); process();', 32, 164);
+
+    t++;
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ════════════════════════════════════════
+   REPLAY VIZ (Stage 8)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('replay-viz'); if (!c) return;
+  let val = 75;
+  const events7d = [
+    { t: '-7d', label: 'System restart', color: '#34d399' },
+    { t: '-6d', label: 'Deploy v2.1.0', color: '#4f9cf9' },
+    { t: '-5d', label: 'ML model v8 deployed', color: '#9d74f5' },
+    { t: '-3d', label: 'BUG introduced in pipeline', color: '#f87171' },
+    { t: '-2d', label: 'Bug detected', color: '#fbbf24' },
+    { t: 'now', label: 'Replay from -5d to fix', color: '#22d3ee' },
+  ];
+
+  c.innerHTML = `
+    <div style="margin-bottom:.6rem;font-family:var(--mono);font-size:.6rem;color:var(--muted)">Drag to scrub through retention window (7 days)</div>
+    <div class="scrubber-wrap">
+      <div class="scrubber-track" id="st">
+        <div class="scrubber-fill" id="sf" style="width:${val}%"></div>
+        <div class="scrubber-thumb" id="sth" style="left:${val}%"></div>
+        <input type="range" class="scrubber-input" id="scrubber" min="0" max="100" value="${val}">
+      </div>
+      <div class="scrubber-labels"><span>7 days ago</span><span id="ts-label">3 days ago</span><span>now</span></div>
+    </div>
+    <div class="replay-events" id="replay-events"></div>`;
+
+  function updateReplay(v) {
+    document.getElementById('sf').style.width = v + '%';
+    document.getElementById('sth').style.left = v + '%';
+    const daysAgo = Math.round(7 - v * .07);
+    document.getElementById('ts-label').textContent = daysAgo > 0 ? `-${daysAgo}d` : 'now';
+
+    const cutoff = Math.round(v / 100 * events7d.length);
+    const re = document.getElementById('replay-events');
+    re.innerHTML = events7d.slice(0, cutoff + 1).map(ev => `
+      <div class="re-row" style="background:${ev.color}12;border:1px solid ${ev.color}44">
+        <span style="font-family:var(--mono);font-size:.6rem;color:var(--muted);min-width:32px">${ev.t}</span>
+        <span style="font-size:.75rem;color:${ev.color}">${ev.label}</span>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('scrubber').addEventListener('input', e => updateReplay(+e.target.value));
+  updateReplay(val);
+})();
+
+/* ════════════════════════════════════════
+   ORDERING VIZ (Stage 9)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('ord-viz'); if (!c) return;
+  const parts = [
+    { label: 'P0 · key:AAPL', events: ['B1','B2','B3','S1','B4'], color: '#4f9cf9' },
+    { label: 'P1 · key:MSFT', events: ['B5','S2','B6','S3'],     color: '#9d74f5' },
+    { label: 'P2 · key:GOOG', events: ['S4','B7','S5'],           color: '#22d3ee' },
+  ];
+  c.innerHTML = `
+    ${parts.map(p => `
+      <div class="ord-part">
+        <span class="ord-label">${p.label}</span>
+        ${p.events.map(e => `<div class="ord-msg" style="background:${p.color}15;border-color:${p.color}88;color:${p.color}">${e}</div>`).join('')}
+        <span style="font-family:var(--mono);font-size:.58rem;color:var(--green);margin-left:.3rem">→ ordered</span>
+      </div>`).join('')}
+    <div style="margin-top:.55rem;padding:.55rem .8rem;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.2);border-radius:7px;font-size:.77rem;color:var(--muted);line-height:1.6">
+      <strong style="color:var(--red)">No global order:</strong> B6 (MSFT) and S4 (GOOG) have no ordering relationship — 
+      even if S4 arrived before B6. Partition key = stock ticker ensures all trades for one ticker are ordered correctly.
+    </div>
+    <div style="margin-top:.5rem;font-size:.77rem;color:var(--muted)">
+      <strong style="color:var(--amber)">Hot partition risk:</strong> If 90% of volume is AAPL, P0 is overwhelmed while P1 and P2 sit idle. 
+      Use high-cardinality keys (user ID, device ID) to spread load evenly.
+    </div>`;
+})();
+
+/* ════════════════════════════════════════
+   DOWNSTREAM VIZ (Stage 10)
+════════════════════════════════════════ */
+(function() {
+  const c = document.getElementById('downstream-viz'); if (!c) return;
+  c.innerHTML = `
+    <div style="text-align:center;margin-bottom:.75rem">
+      <div style="display:inline-block;padding:.45rem 1.1rem;border:1px solid var(--accent);border-radius:6px;font-family:var(--mono);font-size:.72rem;color:var(--accent);background:rgba(79,156,249,.07)">
+        📡 Event Hub Namespace &nbsp;·&nbsp; 10 partitions &nbsp;·&nbsp; 8 TU
+      </div>
+    </div>
+    <div class="pipeline-row"><div class="pipe-source">Capture</div><div class="pipe-arrow pipe-dot-anim" style="flex:1;height:1px;background:var(--border);margin:0 .3rem;position:relative"></div><div class="pipe-dest pd-blue">Azure Data Lake Gen2 (Avro)</div></div>
+    <div class="pipeline-row"><div class="pipe-source">CG: stream</div><div class="pipe-arrow pipe-dot-anim" style="flex:1;height:1px;background:var(--border);margin:0 .3rem;position:relative;animation-delay:.4s"></div><div class="pipe-dest pd-green">Stream Analytics → Power BI</div></div>
+    <div class="pipeline-row"><div class="pipe-source">CG: ml</div><div class="pipe-arrow pipe-dot-anim" style="flex:1;height:1px;background:var(--border);margin:0 .3rem;position:relative;animation-delay:.8s"></div><div class="pipe-dest pd-purple">Databricks Structured Streaming</div></div>
+    <div class="pipeline-row"><div class="pipe-source">CG: dw</div><div class="pipe-arrow pipe-dot-anim" style="flex:1;height:1px;background:var(--border);margin:0 .3rem;position:relative;animation-delay:1.2s"></div><div class="pipe-dest pd-cyan">Synapse Analytics Pipeline</div></div>
+    <div style="margin-top:.65rem;font-size:.77rem;color:var(--muted);line-height:1.65">
+      Each downstream system reads at its own pace. Databricks may lag 5 minutes. Stream Analytics processes in near real-time. <strong style="color:var(--text)">None of them affect each other</strong>, and none affect producers.
+    </div>`;
+})();
+
+/* ════════════════════════════════════════
+   SCENARIOS (Stage 12)
+════════════════════════════════════════ */
+const scenarios = [
+  {
+    title: 'High-Frequency Trading Feed',
+    cards: [
+      { type: 'sc-why', title: 'Why Event Hubs Fits', body: '100K+ trades/second. Multiple downstream consumers (risk engine, compliance, analytics). Kafka-protocol compatibility for existing trade systems. Zero message loss tolerance.' },
+      { type: 'sc-fail', title: 'Failure Considerations', body: 'Consumer lag = stale risk calculations. Hot partitions if using instrument type as key. Capture prevents data loss if risk engine crashes beyond retention.' },
+      { type: 'sc-scale', title: 'Scaling Model', body: '32 partitions, 20+ TU. Auto-inflate enabled. Dedicated tier to avoid noisy-neighbor at peak market hours. Monitor egress per consumer group separately.' },
+      { type: 'sc-part', title: 'Partition Strategy', body: 'Partition key = ticker symbol. Ensures full order book for each instrument stays ordered in one partition. Monitor for hot partitions (AAPL, MSFT have disproportionate volume).' },
+    ]
+  },
+  {
+    title: 'IoT Sensor Ingestion',
+    cards: [
+      { type: 'sc-why', title: 'Why Event Hubs Fits', body: '100,000 sensors at 10 msgs/sec = 1M msgs/sec. Sensors batch and retry — at-least-once is fine. Stream Analytics processes in real-time, Data Lake for cold storage.' },
+      { type: 'sc-fail', title: 'Failure Considerations', body: 'Dead sensors produce no events — silent data gaps. Implement heartbeat monitoring. Device clocks drift — embed producer timestamps, not broker timestamps, in event payload.' },
+      { type: 'sc-scale', title: 'Scaling Model', body: 'Start with 8 TU, auto-inflate to 20. Partition count should match max desired consumer parallelism (32 is a good ceiling for IoT). Capture to Data Lake for all raw events.' },
+      { type: 'sc-part', title: 'Partition Strategy', body: 'Partition key = device ID. Ensures all readings from one sensor are ordered. High cardinality (100K devices) → even distribution across partitions.' },
+    ]
+  },
+  {
+    title: 'Website Clickstream Analytics',
+    cards: [
+      { type: 'sc-why', title: 'Why Event Hubs Fits', body: 'Bursty traffic (flash sales, viral content). Multiple downstream consumers (personalization, analytics, A/B testing). Need to replay for model retraining without re-tagging the site.' },
+      { type: 'sc-fail', title: 'Failure Considerations', body: 'JavaScript SDK may drop events on browser close — acceptable loss rate for analytics. Bot traffic inflates event volume — filter at Stream Analytics, not Event Hubs layer. Session stitching requires same-partition ordering per session.' },
+      { type: 'sc-scale', title: 'Scaling Model', body: '4–8 TU normally, auto-inflate to 20 for sale events. Partition count: 16–32. Events are small (~1KB) so TU limits are reached by count, not size.' },
+      { type: 'sc-part', title: 'Partition Strategy', body: 'Partition key = session ID. Ensures all clicks in a user session are ordered for funnel analysis. Anonymous users get a synthetic session ID at first page load.' },
+    ]
+  },
+  {
+    title: 'Application Log Pipeline',
+    cards: [
+      { type: 'sc-why', title: 'Why Event Hubs Fits', body: 'All services emit logs to one Event Hub. Log Analytics, Splunk, and a custom alerting consumer all read independently. Capture to Data Lake for cost-efficient long-term storage.' },
+      { type: 'sc-fail', title: 'Failure Considerations', body: 'Log volume spikes on incidents — exactly when you need the pipeline most. Auto-inflate must be enabled. Structured logging (JSON) required for Stream Analytics filtering; plaintext logs are unqueryable at the broker.' },
+      { type: 'sc-scale', title: 'Scaling Model', body: '2–4 TU baseline with auto-inflate. Log events are high-cardinality but small. Retention: 1 day in Event Hubs, permanent in Capture. Use Capture as primary archive, not extended retention.' },
+      { type: 'sc-part', title: 'Partition Strategy', body: 'Partition key = service name or log level. Service name gives per-service ordering useful for distributed tracing. Log level keys (ERROR, WARN) create hot partitions — avoid if alerting consumer needs low latency.' },
+    ]
+  },
+];
+
+function showScenario(idx) {
+  document.querySelectorAll('.stab').forEach((b, i) => b.classList.toggle('active', i === idx));
+  const s = scenarios[idx];
+  document.getElementById('scenarios').innerHTML = `
+    <div class="sc-grid">
+      ${s.cards.map(card => `
+        <div class="sc-card ${card.type}">
+          <div class="sc-card-title">${card.title}</div>
+          <p>${card.body}</p>
+        </div>
+      `).join('')}
+    </div>`;
+}
+showScenario(0);
+</script>
+</body>
+</html>
