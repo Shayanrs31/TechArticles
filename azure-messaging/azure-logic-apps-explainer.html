@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Logic Apps — First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root[data-theme="dark"] {
+  --bg: #080e1a;
+  --bg2: #0d1526;
+  --bg3: #111d33;
+  --surface: #141f35;
+  --border: #1e2f4d;
+  --text: #e2eaf8;
+  --text2: #8ba3c7;
+  --text3: #4a6080;
+  --accent: #2dd4bf;
+  --accent2: #818cf8;
+  --accent3: #34d399;
+  --accent4: #f472b6;
+  --accent5: #fb923c;
+  --glow: rgba(45,212,191,0.12);
+  --glow2: rgba(129,140,248,0.12);
+  --card: #0d1526;
+  --danger: #f87171;
+}
+:root[data-theme="light"] {
+  --bg: #f8fafc;
+  --bg2: #f1f5f9;
+  --bg3: #e8f0f8;
+  --surface: #ffffff;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #94a3b8;
+  --accent: #0d9488;
+  --accent2: #6366f1;
+  --accent3: #059669;
+  --accent4: #db2777;
+  --accent5: #ea580c;
+  --glow: rgba(13,148,136,0.08);
+  --glow2: rgba(99,102,241,0.08);
+  --card: #ffffff;
+  --danger: #ef4444;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  transition: background 0.4s, color 0.4s;
+}
+
+/* TOPBAR */
+#topbar {
+  position: fixed; top:0; left:0; right:0; z-index:200;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+}
+#progress-bar {
+  position: fixed; top:52px; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transform-origin: left; transform: scaleX(0);
+  transition: transform 0.12s; z-index:201;
+}
+.brand { font-family:'Space Mono',monospace; font-size:11px; color:var(--text3); letter-spacing:0.14em; text-transform:uppercase; }
+.stage-ind { font-family:'Space Mono',monospace; font-size:10px; color:var(--accent); letter-spacing:0.1em; }
+.theme-btn {
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--text2); cursor:pointer; padding:5px 14px; border-radius:20px;
+  font-size:11px; font-family:'Space Mono',monospace; transition:all 0.2s;
+}
+.theme-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* SIDENAV */
+#sidenav {
+  position:fixed; right:18px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:7px; z-index:190;
+}
+.ndot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--border); cursor:pointer; transition:all 0.3s;
+}
+.ndot.active { background:var(--accent); transform:scale(1.5); }
+
+/* STAGES */
+.stage {
+  min-height:100vh; padding:90px 0 70px;
+  display:flex; align-items:center; justify-content:center;
+}
+.stage:nth-child(odd) { background:var(--bg2); }
+.si {
+  max-width:1120px; width:100%; margin:0 auto; padding:0 44px;
+  display:grid; grid-template-columns:1fr 1fr; gap:64px; align-items:start;
+}
+.si.full { grid-template-columns:1fr; max-width:940px; }
+.si.tri { grid-template-columns:1fr 1fr 1fr; gap:28px; }
+
+/* HERO */
+#hero {
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; text-align:center; padding:80px 40px;
+  background:radial-gradient(ellipse 70% 55% at 50% 45%, var(--glow), transparent),
+             radial-gradient(ellipse 50% 40% at 70% 60%, var(--glow2), transparent);
+}
+.hero-label {
+  font-family:'Space Mono',monospace; font-size:10px; letter-spacing:0.2em;
+  color:var(--accent); text-transform:uppercase; margin-bottom:22px;
+  border:1px solid var(--accent); padding:4px 14px; border-radius:20px; display:inline-block;
+}
+.hero-title {
+  font-family:'Playfair Display',serif; font-size:clamp(44px,7vw,84px);
+  font-weight:700; line-height:1.1; margin-bottom:18px;
+  background:linear-gradient(135deg, var(--text) 30%, var(--accent) 70%, var(--accent2));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.hero-sub { font-size:16px; color:var(--text2); max-width:560px; margin:0 auto 36px; }
+.hero-tags { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+.tag {
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.1em;
+  padding:5px 12px; border-radius:4px; border:1px solid var(--border);
+  color:var(--text3); text-transform:uppercase;
+}
+
+/* LEFT COLUMN */
+.snum { font-family:'Space Mono',monospace; font-size:10px; color:var(--accent); letter-spacing:0.15em; text-transform:uppercase; margin-bottom:10px; }
+.stitle { font-family:'Playfair Display',serif; font-size:clamp(24px,3.2vw,36px); font-weight:700; line-height:1.2; margin-bottom:18px; }
+.narr { font-size:14px; color:var(--text2); margin-bottom:24px; line-height:1.85; }
+.mcards { display:flex; flex-direction:column; gap:10px; }
+.mc {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px;
+}
+.mc-l { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); margin-bottom:5px; }
+.mc p { font-size:12px; color:var(--text2); line-height:1.6; }
+
+/* VIS BOX */
+.vbox {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:14px; overflow:hidden;
+  box-shadow:0 0 50px var(--glow);
+}
+.vbox canvas { display:block; width:100%; }
+.vlabel {
+  font-family:'Space Mono',monospace; font-size:9px; color:var(--text3);
+  text-align:center; padding:8px; border-top:1px solid var(--border);
+  letter-spacing:0.08em; text-transform:uppercase;
+}
+
+/* TABS */
+.tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+.tbtn {
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.08em;
+  padding:6px 14px; border-radius:20px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text3); cursor:pointer; transition:all 0.2s; text-transform:uppercase;
+}
+.tbtn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tcontent { display:none; }
+.tcontent.active { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.scard { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; }
+.scard h4 { font-size:10px; font-family:'Space Mono',monospace; color:var(--accent2); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:7px; }
+.scard p { font-size:12px; color:var(--text2); line-height:1.6; }
+
+/* TABLE */
+.ctable { width:100%; border-collapse:collapse; font-size:12px; }
+.ctable th { font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text3); padding:10px 14px; border-bottom:1px solid var(--border); text-align:left; }
+.ctable td { padding:10px 14px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:top; }
+.ctable tr:last-child td { border-bottom:none; }
+.ctable tr td:first-child { font-family:'Space Mono',monospace; font-size:11px; color:var(--text); }
+.ctable tr:nth-child(even) td { background:var(--glow); }
+.yes { color:var(--accent3); } .no { color:var(--danger); } .maybe { color:var(--accent5); }
+
+/* BADGES */
+.badge { display:inline-block; font-family:'Space Mono',monospace; font-size:9px; padding:3px 9px; border-radius:4px; margin-right:5px; margin-bottom:5px; }
+.bteal { background:rgba(45,212,191,0.12); color:var(--accent); border:1px solid rgba(45,212,191,0.25); }
+.bviolet { background:rgba(129,140,248,0.12); color:var(--accent2); border:1px solid rgba(129,140,248,0.25); }
+.bgreen { background:rgba(52,211,153,0.12); color:var(--accent3); border:1px solid rgba(52,211,153,0.25); }
+.bpink { background:rgba(244,114,182,0.12); color:var(--accent4); border:1px solid rgba(244,114,182,0.25); }
+.borange { background:rgba(251,146,60,0.12); color:var(--accent5); border:1px solid rgba(251,146,60,0.25); }
+
+/* COST GRID */
+.cgrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.ccard { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center; }
+.ccard .big { font-family:'Space Mono',monospace; font-size:20px; color:var(--accent); }
+.ccard .lbl { font-size:10px; color:var(--text3); margin-top:3px; }
+.ccard p { font-size:11px; color:var(--text2); margin-top:7px; line-height:1.5; }
+
+/* PATTERN GRID */
+.pgrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.pcard { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; }
+.pcard h4 { font-family:'Space Mono',monospace; font-size:9px; color:var(--accent); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:8px; }
+.pcard p { font-size:12px; color:var(--text2); line-height:1.5; }
+
+/* FADE */
+.fade-up { opacity:0; transform:translateY(22px); transition:opacity 0.6s, transform 0.6s; }
+.fade-up.visible { opacity:1; transform:none; }
+
+@media(max-width:768px){
+  .si { grid-template-columns:1fr; gap:32px; padding:0 20px; }
+  .si.tri { grid-template-columns:1fr; }
+  .tcontent.active { grid-template-columns:1fr; }
+  .pgrid,.cgrid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="brand">Azure Logic Apps — First Principles</span>
+  <span class="stage-ind" id="sind">STAGE 0 / 13</span>
+  <button class="theme-btn" onclick="toggleTheme()">☀ LIGHT</button>
+</div>
+<div id="progress-bar"></div>
+
+<nav id="sidenav"></nav>
+
+<!-- HERO -->
+<section id="s0" class="stage" style="background:var(--bg)!important; padding:0;">
+<div id="hero">
+  <div class="hero-label">14 Stages · Failure-First · Architect Level</div>
+  <h1 class="hero-title">Azure Logic Apps</h1>
+  <p class="hero-sub">Visual workflow orchestration for integration architects. Where distributed coordination meets durable execution — and where simplicity has a price.</p>
+  <div class="hero-tags">
+    <span class="tag">Orchestration</span>
+    <span class="tag">Stateful Workflows</span>
+    <span class="tag">Managed Connectors</span>
+    <span class="tag">Long-Running Processes</span>
+    <span class="tag">Retry Policies</span>
+    <span class="tag">B2B / EDI</span>
+    <span class="tag">Cost Per Action</span>
+  </div>
+</div>
+</section>
+
+<!-- S0: ORCHESTRATION PROBLEM -->
+<section id="s1" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 0 — The Orchestration Problem</div>
+    <h2 class="stitle">Integration Is Not Just Messaging</h2>
+    <p class="narr">Sending a message between two systems is the easy part. The hard part is coordinating what happens next: branching based on data, waiting for approvals, retrying on failure, transforming formats, and maintaining consistent state across a sequence of steps that spans hours or days. This is orchestration — and it's a different problem than messaging.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Teams that conflate messaging with orchestration eventually recreate workflow state in databases, application code, or queue patterns — accumulating invisible complexity that becomes unmaintainable.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Service Bus handles my integration." Service Bus moves messages. Logic Apps coordinates the sequence of work those messages initiate. They solve adjacent but different problems.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Orchestration:</strong> central coordinator, explicit flow, easier debugging.<br><strong style="color:var(--accent2)">Choreography:</strong> decoupled events, no central brain, emergent behaviour harder to trace.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-orch" height="360"></canvas>
+    <div class="vlabel">Orchestration vs Choreography</div>
+  </div>
+</div>
+</section>
+
+<!-- S1: STATE MACHINE -->
+<section id="s2" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 1 — Workflow as a State Machine</div>
+    <h2 class="stitle">Every Action Is a Durable State</h2>
+    <p class="narr">A Logic App is not a script that runs and forgets. It's a stateful workflow engine that persists the state of each action — inputs, outputs, status — to durable storage. If your host restarts mid-flight, the workflow resumes from where it left off. Each node in the flow is a recorded checkpoint, not just a function call.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Long-running processes (hours, days, months) cannot rely on in-memory execution. Durability is the feature — not a bonus. Without it, any crash loses progress and leaves external systems in inconsistent states.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"I can always re-trigger from the start." Not safely. External side effects (emails sent, charges made, records created) have already occurred. Idempotent replay requires explicit design.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> crash recovery, audit trail, durable checkpoints.<br><strong style="color:var(--danger)">Sacrifice:</strong> per-action storage I/O overhead; stateful workflows are slower than stateless code paths.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-state" height="360"></canvas>
+    <div class="vlabel">Sequential state machine with checkpoint persistence</div>
+  </div>
+</div>
+</section>
+
+<!-- S2: TRIGGERS AND ACTIONS -->
+<section id="s3" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 2 — Triggers and Actions</div>
+    <h2 class="stitle">Every Workflow Starts with a Signal</h2>
+    <p class="narr">A Logic App does nothing until triggered. Triggers are either event-driven (HTTP webhook, message arrival) or polling (checking an endpoint on an interval). What follows the trigger is a sequence of actions — each action calls an API, transforms data, makes a decision, or writes to a system. The workflow is a directed graph from trigger to terminal state.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Polling triggers have latency and cost implications — each poll is a billable operation in Consumption plan. At 1-minute polling intervals, that's 525,600 operations per year before a single message arrives.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Triggers are just like Event Grid subscriptions." Polling triggers are fundamentally different — the Logic App initiates contact on a schedule. Event-driven triggers (webhooks) are closer to push, but still require the Logic App to be listening.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Event-driven:</strong> low latency, no idle cost, requires push-capable source.<br><strong style="color:var(--accent2)">Polling:</strong> universal compatibility, configurable interval, continuous cost at rest.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-trigger" height="360"></canvas>
+    <div class="vlabel">Event-driven vs polling trigger models</div>
+  </div>
+</div>
+</section>
+
+<!-- S3: MANAGED CONNECTORS -->
+<section id="s4" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 3 — Managed Connectors</div>
+    <h2 class="stitle">Adapters You Don't Have to Maintain</h2>
+    <p class="narr">Connectors are pre-built adapters to hundreds of external systems — Salesforce, SAP, Office 365, Dynamics, ServiceNow, SQL, SFTP. They handle OAuth flows, API versioning, throttling, and connection pooling. In theory, you connect to a system without writing connection logic. In practice, managed connectors are shared infrastructure with their own failure modes and pricing tier implications.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Enterprise connectors (SAP, Salesforce, MQ) are billed at significantly higher rates than standard connectors. A workflow that seems cheap can become expensive when the connector tier is factored in.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"A connector means I don't need to understand the target API." Connectors abstract authentication and HTTP mechanics. They don't abstract data models, pagination, rate limits, or API-specific failure semantics. You still need to understand the system you're integrating with.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> zero auth boilerplate, managed retries, version stability.<br><strong style="color:var(--danger)">Sacrifice:</strong> connector-tier pricing, shared infrastructure limits, black-box failure diagnostics.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-conn" height="360"></canvas>
+    <div class="vlabel">Connector abstraction layer — plug adapters between systems</div>
+  </div>
+</div>
+</section>
+
+<!-- S4: STATELESS VS STATEFUL -->
+<section id="s5" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 4 — Stateless vs Stateful Workflows</div>
+    <h2 class="stitle">Memory vs Durability</h2>
+    <p class="narr">Standard Logic Apps support two execution modes. Stateful workflows persist every action's input and output to storage — survivable across crashes, inspectable in run history, ideal for long-running processes. Stateless workflows execute in memory only — faster, cheaper, no run history, no crash recovery. Choose based on what happens if the host restarts mid-execution.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Using stateless mode for a process with side effects means a crash leaves external systems in inconsistent states with no replay capability. Using stateful mode for high-throughput event processing adds unnecessary storage overhead and latency.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Stateful is always safer." Stateful adds storage I/O to every action. For simple, short-lived transformations running thousands of times per minute, stateful mode is actively harmful to performance and cost.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Stateful:</strong> durable, auditable, crash-safe, slower, higher cost.<br><strong style="color:var(--accent2)">Stateless:</strong> fast, lightweight, no history, no recovery, no long-running support.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-states" height="360"></canvas>
+    <div class="vlabel">Stateful persistence vs stateless in-memory execution</div>
+  </div>
+</div>
+</section>
+
+<!-- S5: LONG-RUNNING WORKFLOWS -->
+<section id="s6" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 5 — Long-Running Workflows</div>
+    <h2 class="stitle">Pause, Persist, Resume</h2>
+    <p class="narr">Some processes don't complete in seconds — an approval that waits for a human, a payment that waits for bank confirmation, a compliance check that takes three business days. Logic Apps handles this by serialising the workflow state to storage and releasing the compute resource. The workflow is dormant, costs nothing, and resumes when the external event arrives — even if that's 30 days later.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Without durable waiting, long-running processes require polling loops, database flags, or scheduled jobs — all of which are custom infrastructure that must be built, maintained, and monitored separately.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Azure Functions can do this with Durable Functions." Yes, but that requires code. Logic Apps provides the same durable waiting pattern through visual configuration. The choice is code vs configuration, not capability.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> human-timescale process management with zero idle compute.<br><strong style="color:var(--danger)">Sacrifice:</strong> timeout limits apply (up to 90 days in Standard). Workflow must be designed for resumability from any checkpoint.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-longrun" height="360"></canvas>
+    <div class="vlabel">Pause → persist state → resume on external event</div>
+  </div>
+</div>
+</section>
+
+<!-- S6: ERROR HANDLING -->
+<section id="s7" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 6 — Error Handling and Retry Policies</div>
+    <h2 class="stitle">Failure Is a First-Class Citizen</h2>
+    <p class="narr">Logic Apps has built-in retry policies per action — exponential backoff with configurable attempts, intervals, and termination conditions. Beyond retries, scopes let you group actions and define what happens when the entire scope fails. Run-after conditions let you explicitly wire failure paths — branching into compensation logic, notifications, or dead-letter queues when things go wrong.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>The default retry policy (4 attempts, 7-27 second exponential backoff) is not appropriate for all scenarios. Idempotent actions tolerate aggressive retries. Non-idempotent actions (like sending an email) should have retries disabled or externally deduplicated.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Scopes are just visual grouping." Scopes are execution boundaries with their own error handling context. A failed scope can trigger a compensating transaction — the closest Logic Apps gets to saga-pattern rollback.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> failure paths are explicit, visual, and configurable without code.<br><strong style="color:var(--danger)">Sacrifice:</strong> complex failure graphs become visually unwieldy; error handling logic can grow to match the main flow in complexity.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-error" height="360"></canvas>
+    <div class="vlabel">Retry policies and failure branch routing</div>
+  </div>
+</div>
+</section>
+
+<!-- S7: CONCURRENCY -->
+<section id="s8" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 7 — Concurrency and Scaling</div>
+    <h2 class="stitle">Parallel Branches, Bounded Parallelism</h2>
+    <p class="narr">Logic Apps supports parallel branches — multiple actions executing simultaneously, with a join at the end. The degree of parallelism is configurable. ForEach loops can process array items concurrently up to a defined limit. In Consumption, scaling is automatic but opaque. In Standard, you run on a dedicated host with explicit control over concurrency settings and scaling rules.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>ForEach loops default to 20 concurrent iterations. If each iteration calls an external API with rate limits, 20 concurrent calls may trigger throttling. Reducing concurrency to 1 eliminates parallelism and makes the loop sequential.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Logic Apps scales automatically so I don't need to think about it." In Consumption, concurrency is per-workflow-instance, not global. Multiple trigger events spin up multiple instances — each with their own parallel branches — which can multiply API load unpredictably.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Consumption:</strong> auto-scale, no management, unpredictable parallelism ceiling.<br><strong style="color:var(--accent2)">Standard:</strong> explicit concurrency control, predictable behaviour, capacity planning required.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-parallel" height="360"></canvas>
+    <div class="vlabel">Parallel branches with fan-out and join</div>
+  </div>
+</div>
+</section>
+
+<!-- S8: DATA TRANSFORMATION -->
+<section id="s9" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 8 — Data Transformation</div>
+    <h2 class="stitle">Shape the Data at the Boundary</h2>
+    <p class="narr">Integration always involves data mismatch — different field names, formats, encodings, schemas. Logic Apps provides built-in transformation through expression language (for simple mapping), Liquid templates (for complex JSON-to-JSON), XSLT maps (for XML/EDI), and schema validation. B2B scenarios with EDI (X12, EDIFACT) require an Integration Account — a separate resource with its own pricing tier.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Data transformation logic embedded in workflows is invisible to unit tests. Complex expression chains become maintenance liabilities. For transformation-heavy workflows, consider whether a dedicated transformation service (Azure API Management, custom function) is more maintainable.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"I can do any transformation with Logic Apps expressions." Simple to medium transformations, yes. Complex conditional mapping with aggregations, nested iterations, and lookup tables approaches the limit of what's practical in the expression language without custom code.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> no-code transformation, schema validation without custom code, native EDI support.<br><strong style="color:var(--danger)">Sacrifice:</strong> Integration Account required for B2B (~$300/month base), expression language has limits, not unit-testable.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-transform" height="360"></canvas>
+    <div class="vlabel">Data flowing through transformation stages</div>
+  </div>
+</div>
+</section>
+
+<!-- S9: INTEGRATION PATTERNS -->
+<section id="s10" class="stage fade-up">
+<div class="si full">
+  <div>
+    <div class="snum">Stage 9 — Integration Patterns</div>
+    <h2 class="stitle">Recognised Shapes of Coordination</h2>
+    <p class="narr" style="max-width:700px">Logic Apps maps cleanly to several canonical integration patterns. Understanding which pattern your workflow implements helps you design error handling, compensation, and scaling correctly from the start.</p>
+    <div class="pgrid">
+      <div class="pcard">
+        <h4>Request–Response</h4>
+        <p>Synchronous call-and-wait. Caller blocks until Logic App returns. Use for APIs that must return data inline. Bounded execution time matters — Consumption timeout is 90s for synchronous response.</p>
+      </div>
+      <div class="pcard">
+        <h4>Fan-Out / Fan-In</h4>
+        <p>Split work across parallel branches; collect and join results. Useful for calling multiple services simultaneously and aggregating responses. Fan-in waits for all branches — a slow branch blocks the join.</p>
+      </div>
+      <div class="pcard">
+        <h4>Compensation (Saga)</h4>
+        <p>When a later step fails in a multi-step transaction, undo earlier successful steps via compensating actions. Logic Apps scopes + run-after conditions enable this pattern. Requires explicit design of every reversal action.</p>
+      </div>
+      <div class="pcard">
+        <h4>Human-in-the-Loop</h4>
+        <p>Workflow pauses at an approval gate, sends notification, and waits for a callback. The human responds via email, Teams, or a custom UI. Workflow resumes with the decision. Timeout branches handle non-responses.</p>
+      </div>
+      <div class="pcard">
+        <h4>Message Routing</h4>
+        <p>Inspect incoming message content and route to different downstream systems. Condition branches on message type, source system, or payload fields. Logic Apps is a natural content-based router.</p>
+      </div>
+      <div class="pcard">
+        <h4>Polling Aggregation</h4>
+        <p>Periodically check a source system, collect records since last run, process each, update cursor. Requires watermark state management — typically stored in a blob or table to survive restarts.</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- S10: WHEN NOT TO USE -->
+<section id="s11" class="stage fade-up">
+<div class="si full">
+  <div>
+    <div class="snum">Stage 10 — When NOT to Use Logic Apps</div>
+    <h2 class="stitle">The Honest Comparison</h2>
+    <p class="narr" style="max-width:700px">Logic Apps solves orchestration problems. Every other use case is a question of whether you need the overhead of a visual workflow engine. Know the boundaries before committing to the platform.</p>
+    <br>
+    <table class="ctable" style="background:var(--card); border-radius:12px; overflow:hidden; border:1px solid var(--border);">
+      <thead>
+        <tr>
+          <th>Requirement</th>
+          <th>Logic Apps</th>
+          <th>Azure Functions</th>
+          <th>Service Bus</th>
+          <th>Event Grid</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Long-running orchestration</td>
+          <td class="yes">Native</td>
+          <td class="maybe">Durable Functions</td>
+          <td class="no">Not its role</td>
+          <td class="no">Not its role</td>
+        </tr>
+        <tr>
+          <td>Complex code logic</td>
+          <td class="no">Very limited</td>
+          <td class="yes">Full language</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+        </tr>
+        <tr>
+          <td>Ultra-low latency (&lt;10ms)</td>
+          <td class="no">Not achievable</td>
+          <td class="maybe">Warm instances only</td>
+          <td class="yes">Premium tier</td>
+          <td class="yes">Sub-second</td>
+        </tr>
+        <tr>
+          <td>High-throughput (&gt;1000 TPS)</td>
+          <td class="no">Not the right tool</td>
+          <td class="yes">With scaling</td>
+          <td class="yes">Designed for this</td>
+          <td class="yes">Millions/sec</td>
+        </tr>
+        <tr>
+          <td>Managed connector ecosystem</td>
+          <td class="yes">400+ connectors</td>
+          <td class="no">Custom code</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+        </tr>
+        <tr>
+          <td>B2B / EDI / XSLT</td>
+          <td class="yes">Integration Account</td>
+          <td class="no">Custom code</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+        </tr>
+        <tr>
+          <td>Fan-out / event routing</td>
+          <td class="maybe">Possible but costly</td>
+          <td class="maybe">Triggers</td>
+          <td class="maybe">Topics</td>
+          <td class="yes">Native</td>
+        </tr>
+        <tr>
+          <td>Unit testable logic</td>
+          <td class="no">JSON workflow def</td>
+          <td class="yes">Full test framework</td>
+          <td class="maybe">Partial</td>
+          <td class="no">—</td>
+        </tr>
+        <tr>
+          <td>Cost predictability</td>
+          <td class="maybe">Per-action billing</td>
+          <td class="yes">Per-execution</td>
+          <td class="yes">Per message</td>
+          <td class="yes">Per operation</td>
+        </tr>
+      </tbody>
+    </table>
+    <br>
+    <div class="mc">
+      <div class="mc-l">The Decision Rule</div>
+      <p class="narr" style="margin-bottom:0; font-size:13px">Use Logic Apps when: you need managed connectors to enterprise systems, visual workflow for non-developer stakeholders, long-running human-in-the-loop processes, or B2B/EDI transformation. Use code when: logic is complex, latency requirements are tight, throughput is high, or testability is non-negotiable.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- S11: GOVERNANCE AND OBSERVABILITY -->
+<section id="s12" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 11 — Governance and Observability</div>
+    <h2 class="stitle">Every Run Is a Record</h2>
+    <p class="narr">Logic Apps stores a complete run history for stateful workflows — every action's start time, end time, inputs, outputs, and status. This is your built-in audit trail. Each failed run shows exactly which action failed, with what inputs, and what error was returned. Combined with Azure Monitor, you can alert on failure rates, run durations, and trigger counts. Standard also supports Application Insights integration for custom tracking.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>In regulated environments (finance, healthcare), run history is often a compliance requirement. Logic Apps provides this out of the box. Custom code solutions require custom audit logging — an often underestimated implementation cost.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Run history is free and unlimited." Run history data is stored in Azure Storage and contributes to storage costs. For high-frequency workflows, run history can accumulate significant storage volume. Retention policies should be set explicitly.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> audit trail, step-by-step debugging, compliance data without custom code.<br><strong style="color:var(--danger)">Sacrifice:</strong> run history storage costs, sensitive data in action inputs/outputs requires care around data residency and masking.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-obs" height="360"></canvas>
+    <div class="vlabel">Run history timeline and execution diagnostics</div>
+  </div>
+</div>
+</section>
+
+<!-- S12: SCENARIOS -->
+<section id="s13" class="stage fade-up">
+<div class="si full">
+  <div>
+    <div class="snum">Stage 12 — Real World Architect Scenarios</div>
+    <h2 class="stitle">Where Logic Apps Belongs</h2>
+    <p class="narr" style="max-width:700px">Logic Apps fits integration problems that involve coordination across multiple systems, human decisions, or transformation. Here are four canonical patterns where it is the right choice.</p>
+    <div class="tabs">
+      <button class="tbtn active" onclick="showTab('sc-order', event)">Order Processing</button>
+      <button class="tbtn" onclick="showTab('sc-invoice', event)">Invoice Approval</button>
+      <button class="tbtn" onclick="showTab('sc-case', event)">Case Management</button>
+      <button class="tbtn" onclick="showTab('sc-edi', event)">B2B EDI</button>
+    </div>
+    <div id="sc-order" class="tcontent active">
+      <div class="scard"><h4>Why Logic Apps Fits</h4><p>Order processing involves coordination across inventory, payment, fulfilment, and notification services. The sequential dependency, external API calls, and need for compensation on payment failure map naturally to a stateful workflow with scopes.</p></div>
+      <div class="scard"><h4>Failure Model</h4><p>Payment succeeds but inventory reservation fails → compensation action must void payment. Scope-level error handling triggers the reversal. Dead-letter any unresolvable cases to an operations queue for manual review.</p></div>
+      <div class="scard"><h4>Scaling Implications</h4><p>Peak order volumes (sales events, flash sales) create burst triggers. Consumption plan auto-scales but may hit connector throttling limits. Consider Standard plan with explicit concurrency settings if order volume is predictable and high.</p></div>
+      <div class="scard"><h4>Cost Considerations</h4><p>Each order = ~15–30 actions. At $0.000025/action, cost is negligible per order. Enterprise connectors (SAP, Dynamics) multiply cost. Integration Account ($300+/month) only justified if EDI is needed.</p></div>
+    </div>
+    <div id="sc-invoice" class="tcontent">
+      <div class="scard"><h4>Why Logic Apps Fits</h4><p>Invoice approval is the canonical human-in-the-loop pattern. Multi-tier approval (line manager → finance → CFO for amounts > threshold) with timeout escalation is a natural Logic Apps design. The visual workflow matches the business process diagram almost 1:1.</p></div>
+      <div class="scard"><h4>Failure Model</h4><p>Approver doesn't respond within SLA → escalate to substitute or auto-approve based on policy. Timeout branches handle this. Non-response is not an error — it's a known state transition that must be designed.</p></div>
+      <div class="scard"><h4>Scaling Implications</h4><p>Invoice approval is low-volume, long-duration. A typical enterprise processes hundreds, not thousands, of invoices daily. Consumption plan is entirely adequate — no scaling design required. Most instances are dormant waiting for human response.</p></div>
+      <div class="scard"><h4>Cost Considerations</h4><p>Very low cost per approval: dominated by wait time with zero compute usage. Office 365 connector is Standard tier — included in most scenarios. Main cost driver is developer time to build approval logic, not runtime cost.</p></div>
+    </div>
+    <div id="sc-case" class="tcontent">
+      <div class="scard"><h4>Why Logic Apps Fits</h4><p>Case management integrates CRM (Dynamics, Salesforce), ticketing (ServiceNow, Jira), and communication (Teams, email). All three have managed connectors. The case lifecycle (open → assigned → in-progress → resolved) maps to workflow states with branching at each transition.</p></div>
+      <div class="scard"><h4>Failure Model</h4><p>CRM update fails mid-workflow → case record is partially updated. Without compensation, the system is inconsistent. Design each step to be idempotent or implement explicit rollback. Use correlation IDs to track case state across systems.</p></div>
+      <div class="scard"><h4>Scaling Implications</h4><p>Case volume is typically predictable. The main scaling concern is connector throttling — Salesforce, for example, has API call limits per org. Design with throttling in mind: batch reads where possible, avoid polling triggers on case volume > 1/minute.</p></div>
+      <div class="scard"><h4>Cost Considerations</h4><p>Enterprise connectors (Salesforce, SAP, ServiceNow) carry premium pricing. Audit the connector tiers before designing. A workflow using 3 enterprise connectors at 20 actions each = significant cost at volume even with Consumption plan's low per-action rate.</p></div>
+    </div>
+    <div id="sc-edi" class="tcontent">
+      <div class="scard"><h4>Why Logic Apps Fits</h4><p>B2B EDI (X12, EDIFACT, HL7) is purpose-built for Logic Apps Integration Account. Trading partner agreements, schema validation, acknowledgement generation, and XSLT transformation are all managed features. Custom code alternatives require weeks of EDI library integration.</p></div>
+      <div class="scard"><h4>Failure Model</h4><p>EDI schema validation failure → generate 997 functional acknowledgement with reject code, route to error queue for human review. Logic Apps handles this natively via Integration Account validation action. Never silently drop failed EDI — every message requires an acknowledgement.</p></div>
+      <div class="scard"><h4>Scaling Implications</h4><p>EDI volumes in retail/supply chain can be high (thousands of 850 purchase orders daily). Integration Account is per-region, not per-workflow — all B2B workflows share the same account. Monitor throughput limits at the Integration Account level.</p></div>
+      <div class="scard"><h4>Cost Considerations</h4><p>Integration Account is the cost anchor: Basic (~$300/month) or Standard (~$1,000/month). This is the baseline before any workflow execution cost. Only use Integration Account if EDI/B2B is the primary use case — don't pay for it for JSON-only workflows.</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- S13: COST MODEL -->
+<section id="s14" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 13 — Cost Model and Operational Considerations</div>
+    <h2 class="stitle">Every Action Has a Price</h2>
+    <p class="narr">Consumption Logic Apps bill per action execution — $0.000025 per action. That sounds trivial until a loop processes 10,000 records, each with 5 actions. That's 50,000 actions per run. At 100 runs/day, you're at 5M actions/month — about $125, before connector costs. Standard is a flat monthly fee for the hosting plan — predictable, but requires capacity planning upfront.</p>
+    <div class="mcards">
+      <div class="mc">
+        <div class="mc-l">Why It Matters</div>
+        <p>Polling triggers in Consumption run even when no messages are available. A 1-minute interval trigger = 525,600 billable operations per year. Long-polling or event-driven triggers are dramatically cheaper at rest.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Common Misconception</div>
+        <p>"Standard is always more expensive." For high-frequency workflows, Standard's flat rate is often cheaper than Consumption's per-action billing. Calculate the breakeven point before assuming Consumption is the economical choice.</p>
+      </div>
+      <div class="mc">
+        <div class="mc-l">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Consumption:</strong> zero baseline, scales to zero, cost grows with usage, no capacity planning.<br><strong style="color:var(--accent2)">Standard:</strong> flat monthly baseline (~$200+), predictable, VNet integration, multiple workflows per plan.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox">
+    <canvas id="c-cost" height="360"></canvas>
+    <div class="vlabel">Cost accumulation per action — Consumption vs Standard breakeven</div>
+  </div>
+</div>
+</section>
+
+<script>
+// ===================== THEME =====================
+function toggleTheme() {
+  const h = document.documentElement;
+  const dark = h.getAttribute('data-theme') === 'dark';
+  h.setAttribute('data-theme', dark ? 'light' : 'dark');
+  document.querySelector('.theme-btn').textContent = dark ? '🌙 DARK' : '☀ LIGHT';
+  setTimeout(redrawStatics, 80);
+}
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+
+// ===================== SIDENAV SETUP =====================
+const stageCount = 15;
+const sn = document.getElementById('sidenav');
+for (let i = 0; i < stageCount; i++) {
+  const d = document.createElement('div');
+  d.className = 'ndot' + (i === 0 ? ' active' : '');
+  d.onclick = () => document.getElementById(`s${i}`)?.scrollIntoView({behavior:'smooth'});
+  sn.appendChild(d);
+}
+
+// ===================== SCROLL =====================
+function onScroll() {
+  const sy = window.scrollY;
+  const total = document.body.scrollHeight - window.innerHeight;
+  document.getElementById('progress-bar').style.transform = `scaleX(${sy/total})`;
+  let cur = 0;
+  for (let i = 0; i < stageCount; i++) {
+    const el = document.getElementById(`s${i}`);
+    if (el && el.getBoundingClientRect().top < window.innerHeight * 0.55) cur = i;
+  }
+  document.getElementById('sind').textContent = `STAGE ${cur} / 13`;
+  document.querySelectorAll('.ndot').forEach((d,i) => d.classList.toggle('active', i === cur));
+}
+window.addEventListener('scroll', onScroll);
+
+// ===================== FADE IN =====================
+const io = new IntersectionObserver(es => es.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); }), {threshold:0.08});
+document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
+
+// ===================== TABS =====================
+function showTab(id, ev) {
+  document.querySelectorAll('.tcontent').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  ev.target.classList.add('active');
+}
+
+// ===================== CANVAS HELPERS =====================
+function setupCanvas(id, h) {
+  const c = document.getElementById(id); if (!c) return null;
+  const r = window.devicePixelRatio || 1;
+  const w = c.parentElement.clientWidth;
+  c.width = w * r; c.height = h * r;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(r, r);
+  return {ctx, w, h: h, c};
+}
+
+// Color helpers
+function teal() { return isDark() ? '#2dd4bf' : '#0d9488'; }
+function violet() { return isDark() ? '#818cf8' : '#6366f1'; }
+function green() { return isDark() ? '#34d399' : '#059669'; }
+function pink() { return isDark() ? '#f472b6' : '#db2777'; }
+function orange() { return isDark() ? '#fb923c' : '#ea580c'; }
+function danger() { return isDark() ? '#f87171' : '#ef4444'; }
+function textCol() { return isDark() ? '#8ba3c7' : '#475569'; }
+function borderCol() { return isDark() ? '#1e2f4d' : '#cbd5e1'; }
+function cardCol() { return isDark() ? '#0d1526' : '#ffffff'; }
+
+// ===================== C0: ORCHESTRATION vs CHOREOGRAPHY =====================
+let orchT = 0;
+function drawOrch() {
+  const s = setupCanvas('c-orch', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  const t = teal(), v = violet(), tx = textCol(), bd = borderCol();
+  
+  function frame() {
+    orchT = (orchT + 0.008) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const half = w/2;
+    
+    // LEFT: ORCHESTRATION
+    ctx.fillStyle = tx; ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('ORCHESTRATION', half*0.5, 22);
+    
+    // Central coordinator
+    const cx = half*0.5, cy = h*0.45;
+    const pulse = Math.sin(orchT * Math.PI * 2) * 4;
+    ctx.fillStyle = t + '22'; ctx.strokeStyle = t; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, 28 + pulse*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = t; ctx.font = 'bold 8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('LOGIC', cx, cy-4); ctx.fillText('APP', cx, cy+8);
+    
+    // Services around coordinator
+    const svcs = ['CRM','ERP','EMAIL','DB'];
+    svcs.forEach((svc, i) => {
+      const a = (i / svcs.length) * Math.PI * 2 - Math.PI/2;
+      const sx = cx + Math.cos(a) * 75;
+      const sy = cy + Math.sin(a) * 65;
+      
+      // Arrow (animated)
+      const prog = (orchT + i * 0.25) % 1;
+      const ax = cx + (sx - cx) * prog;
+      const ay = cy + (sy - cy) * prog;
+      
+      ctx.strokeStyle = bd; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(sx, sy); ctx.stroke(); ctx.setLineDash([]);
+      
+      ctx.fillStyle = v; ctx.beginPath(); ctx.arc(ax, ay, 3, 0, Math.PI*2); ctx.fill();
+      
+      ctx.fillStyle = isDark() ? '#141f35' : '#f8fafc';
+      ctx.strokeStyle = v; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(sx-22, sy-10, 44, 20, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = v; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(svc, sx, sy+4);
+    });
+    
+    // DIVIDER
+    ctx.strokeStyle = bd; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(half, 20); ctx.lineTo(half, h-20); ctx.stroke();
+    
+    // RIGHT: CHOREOGRAPHY
+    ctx.fillStyle = tx; ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('CHOREOGRAPHY', half + half*0.5, 22);
+    
+    // Peer services with event arrows
+    const psvcs = [{n:'SVC A',x:half+40,y:80},{n:'SVC B',x:half+160,y:80},{n:'SVC C',x:half+40,y:200},{n:'SVC D',x:half+160,y:200}];
+    psvcs.forEach(p => {
+      ctx.fillStyle = isDark() ? '#141f35' : '#f8fafc';
+      ctx.strokeStyle = orange(); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(p.x-24, p.y-14, 48, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = orange(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(p.n, p.x, p.y+4);
+    });
+    
+    // Event arrows between peers (criss-cross)
+    const pairs = [[0,1],[1,3],[0,2],[2,3],[1,2]];
+    pairs.forEach(([a2,b], pi) => {
+      const pa = psvcs[a2], pb = psvcs[b];
+      const prog2 = (orchT * 3 + pi * 0.4) % 1;
+      const ax2 = pa.x + (pb.x - pa.x) * prog2;
+      const ay2 = pa.y + (pb.y - pa.y) * prog2;
+      ctx.strokeStyle = orange() + '44'; ctx.lineWidth = 0.8; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+      ctx.fillStyle = orange();
+      ctx.beginPath(); ctx.arc(ax2, ay2, 2.5, 0, Math.PI*2); ctx.fill();
+    });
+    
+    // Labels
+    ctx.fillStyle = green(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Central control · explicit flow', half*0.5, h-20);
+    ctx.fillStyle = orange(); ctx.textAlign = 'center';
+    ctx.fillText('Emergent · harder to trace', half+half*0.5, h-20);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C1: STATE MACHINE =====================
+let stateT = 0;
+function drawState() {
+  const s = setupCanvas('c-state', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  const nodes = [
+    {label:'TRIGGER', y:0.1},
+    {label:'VALIDATE', y:0.28},
+    {label:'CALL API', y:0.46},
+    {label:'TRANSFORM', y:0.64},
+    {label:'COMPLETE', y:0.82},
+  ];
+  
+  function frame() {
+    stateT = (stateT + 0.005) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const cx = w/2;
+    const activeIdx = Math.floor(stateT * (nodes.length + 1));
+    
+    nodes.forEach((n, i) => {
+      const ny = n.y * h;
+      const active = i < activeIdx;
+      const current = i === activeIdx - 1;
+      const pulse = current ? Math.sin(stateT * Math.PI * 2 * nodes.length) * 0.5 + 0.5 : 0;
+      
+      // Connection line
+      if (i < nodes.length - 1) {
+        const prog = active && i < activeIdx - 1 ? 1 : (i === activeIdx - 1 ? (stateT * (nodes.length+1)) % 1 : 0);
+        ctx.strokeStyle = active ? teal() : borderCol();
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(cx, ny+18); ctx.lineTo(cx, nodes[i+1].y * h - 18); ctx.stroke();
+        
+        // Moving dot
+        if (i === activeIdx - 1 && activeIdx <= nodes.length) {
+          const dotY = ny + 18 + (nodes[i+1]?.y * h - 18 - ny - 18) * prog;
+          ctx.fillStyle = teal();
+          ctx.beginPath(); ctx.arc(cx, dotY, 4, 0, Math.PI*2); ctx.fill();
+        }
+      }
+      
+      // Checkpoint storage (right side)
+      if (active) {
+        ctx.fillStyle = violet() + '22'; ctx.strokeStyle = violet() + '66'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(cx+80, ny-12, 60, 24, 3); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = violet(); ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+        ctx.fillText('STORED', cx+110, ny+2); ctx.fillText('✓', cx+110, ny-2);
+      }
+      
+      // Node circle
+      ctx.fillStyle = active ? teal()+'33' : borderCol()+'22';
+      ctx.strokeStyle = current ? teal() : (active ? teal()+'88' : borderCol());
+      ctx.lineWidth = current ? 2.5 : 1.5;
+      if (current) {
+        ctx.shadowColor = teal(); ctx.shadowBlur = 12 * pulse;
+      }
+      ctx.beginPath(); ctx.arc(cx, ny, 18, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = active ? teal() : textCol(); ctx.font = 'bold 8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(n.label, cx, ny+3);
+      ctx.textAlign = 'left';
+    });
+    
+    // Storage label
+    ctx.fillStyle = violet(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('DURABLE STORAGE', cx+110, h-24);
+    ctx.strokeStyle = violet() + '44'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(cx+80, 0.1*h); ctx.lineTo(cx+80, 0.82*h); ctx.stroke(); ctx.setLineDash([]);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C2: TRIGGERS =====================
+let trigT = 0;
+function drawTrigger() {
+  const s = setupCanvas('c-trigger', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  function frame() {
+    trigT += 0.01;
+    ctx.clearRect(0,0,w,h);
+    
+    const half = h/2;
+    
+    // TOP: EVENT-DRIVEN
+    ctx.fillStyle = textCol(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('EVENT-DRIVEN TRIGGER (Webhook / HTTP)', 16, 20);
+    
+    // Source fires
+    const evPhase = (trigT * 0.5) % 1;
+    if (evPhase < 0.15) {
+      ctx.fillStyle = teal() + '33'; ctx.strokeStyle = teal(); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(16, 34, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('SOURCE', 56, 52);
+      
+      // Instant arrow
+      const prog = evPhase / 0.15;
+      ctx.strokeStyle = teal(); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(96, 48); ctx.lineTo(96 + prog * 120, 48); ctx.stroke();
+      ctx.fillStyle = teal(); ctx.beginPath(); ctx.arc(96 + prog * 120, 48, 4, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = teal() + '33'; ctx.strokeStyle = teal(); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(16, 34, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('SOURCE', 56, 52);
+      ctx.strokeStyle = teal(); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(96, 48); ctx.lineTo(220, 48); ctx.stroke();
+    }
+    
+    // Logic App (receiving)
+    ctx.fillStyle = violet() + '22'; ctx.strokeStyle = violet(); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(w-110, 34, 90, 28, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = violet(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('LOGIC APP', w-65, 52);
+    
+    ctx.fillStyle = green(); ctx.font = '9px Inter'; ctx.textAlign = 'left';
+    ctx.fillText('Instant · no idle cost · source must support push', 16, 80);
+    
+    // DIVIDER
+    ctx.strokeStyle = borderCol(); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(16, half); ctx.lineTo(w-16, half); ctx.stroke();
+    
+    // BOTTOM: POLLING
+    ctx.fillStyle = textCol(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('POLLING TRIGGER (checks every N seconds)', 16, half+20);
+    
+    // Poll arrows at intervals
+    const pollCount = 5;
+    for (let i = 0; i < pollCount; i++) {
+      const px = 40 + i * (w-80)/pollCount;
+      const active = (trigT * 0.3 + i*0.2) % 1 < 0.12;
+      ctx.strokeStyle = active ? orange() : borderCol();
+      ctx.lineWidth = active ? 2 : 1;
+      ctx.setLineDash(active ? [] : [3,3]);
+      ctx.beginPath(); ctx.moveTo(px, half+40); ctx.lineTo(px, half+90); ctx.stroke(); ctx.setLineDash([]);
+      
+      // Question mark or check
+      ctx.fillStyle = active ? orange() : textCol()+'44';
+      ctx.font = active ? 'bold 12px Inter' : '10px Inter'; ctx.textAlign = 'center';
+      ctx.fillText(active ? '📨' : '?', px, half+110);
+      
+      if (active) {
+        ctx.fillStyle = orange()+'22'; ctx.strokeStyle = orange(); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(px-20, half+38, 40, 20, 3); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = orange(); ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+        ctx.fillText('BILL', px, half+52);
+      }
+    }
+    
+    ctx.fillStyle = orange(); ctx.font = '9px Inter'; ctx.textAlign = 'left';
+    ctx.fillText('1-min poll = 525,600 billable ops/year at rest', 16, h-16);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C3: CONNECTORS =====================
+let connT = 0;
+function drawConn() {
+  const s = setupCanvas('c-conn', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  const connectors = [
+    {n:'Salesforce', c:teal, y:0.15},
+    {n:'SAP', c:orange, y:0.3},
+    {n:'Office 365', c:violet, y:0.45},
+    {n:'ServiceNow', c:green, y:0.6},
+    {n:'SQL', c:pink, y:0.75},
+  ];
+  
+  function frame() {
+    connT += 0.008;
+    ctx.clearRect(0,0,w,h);
+    
+    const cx = w/2;
+    
+    // Logic App (center)
+    ctx.fillStyle = teal() + '22'; ctx.strokeStyle = teal(); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(cx-50, h/2-28, 100, 56, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = teal(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('LOGIC APP', cx, h/2-6); ctx.fillText('WORKFLOW', cx, h/2+8);
+    
+    connectors.forEach((conn, i) => {
+      const y = conn.y * h;
+      const col = conn.c();
+      
+      // Left side: source system
+      ctx.fillStyle = isDark() ? '#141f35' : '#f1f5f9';
+      ctx.strokeStyle = col + '88'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(16, y-14, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(conn.n, 56, y+4);
+      
+      // Connector plug (middle)
+      const plugX = cx - 80;
+      ctx.fillStyle = col + '33'; ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(plugX-18, y-10, 36, 20, 10); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '7px Inter'; ctx.textAlign = 'center';
+      ctx.fillText('🔌', plugX, y+4);
+      
+      // Animated particle from connector to Logic App
+      const prog = (connT + i * 0.2) % 1;
+      const px = plugX + 18 + (cx-50 - plugX - 18) * prog;
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px, y, 3.5, 0, Math.PI*2); ctx.fill();
+      
+      // Line from source to plug
+      ctx.strokeStyle = col + '44'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(96, y); ctx.lineTo(plugX-18, y); ctx.stroke();
+    });
+    
+    // Label
+    ctx.fillStyle = textCol(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Connectors handle auth, throttling, retries', cx, h-16);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C4: STATEFUL vs STATELESS =====================
+let statesT = 0;
+function drawStates() {
+  const s = setupCanvas('c-states', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  function frame() {
+    statesT += 0.01;
+    ctx.clearRect(0,0,w,h);
+    
+    const half = w/2;
+    
+    // LEFT: STATEFUL
+    ctx.fillStyle = textCol(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('STATEFUL', half*0.5, 20);
+    
+    // Storage cylinders
+    const steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const gy = 40 + i * 62;
+      // Action box
+      ctx.fillStyle = teal()+'22'; ctx.strokeStyle = teal()+'88'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(half*0.5-35, gy, 70, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(`ACTION ${i+1}`, half*0.5, gy+17);
+      
+      // Storage write
+      const active = Math.sin(statesT * 2 + i) > 0.5;
+      if (active) {
+        ctx.fillStyle = violet()+'33'; ctx.strokeStyle = violet(); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(half*0.5+60, gy+14, 18, 8, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = violet(); ctx.font = '6px Space Mono'; ctx.textAlign = 'center';
+        ctx.fillText('DB', half*0.5+60, gy+17);
+        ctx.strokeStyle = violet()+'66'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(half*0.5+35, gy+14); ctx.lineTo(half*0.5+42, gy+14); ctx.stroke();
+      }
+    }
+    ctx.fillStyle = teal(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Crash-safe · auditable', half*0.5, h-18);
+    
+    // DIVIDER
+    ctx.strokeStyle = borderCol(); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(half, 10); ctx.lineTo(half, h-10); ctx.stroke();
+    
+    // RIGHT: STATELESS
+    ctx.fillStyle = textCol(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('STATELESS', half + half*0.5, 20);
+    
+    // Single fast pass
+    const prog = (statesT * 0.4) % 1;
+    const startX = half + 40;
+    const endX = w - 40;
+    
+    ctx.strokeStyle = orange(); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(startX, h/2); ctx.lineTo(startX + prog * (endX - startX), h/2); ctx.stroke();
+    ctx.fillStyle = orange(); ctx.beginPath(); ctx.arc(startX + prog * (endX - startX), h/2, 6, 0, Math.PI*2); ctx.fill();
+    
+    ctx.fillStyle = orange()+'22'; ctx.strokeStyle = orange()+'44'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(half+30, h/2-30, 50, 25, 4); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(half+100, h/2-30, 50, 25, 4); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(half+170, h/2-30, 50, 25, 4); ctx.fill(); ctx.stroke();
+    
+    ctx.fillStyle = orange(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('IN', half+55, h/2-12);
+    ctx.fillText('PROC', half+125, h/2-12);
+    ctx.fillText('OUT', half+195, h/2-12);
+    
+    ctx.fillStyle = textCol(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('In-memory · no history · no recovery', half + half*0.5, h-18);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C5: LONG-RUNNING =====================
+let lrT = 0;
+function drawLongrun() {
+  const s = setupCanvas('c-longrun', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  function frame() {
+    lrT = (lrT + 0.004) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const phases = [
+      {label:'Submit\nRequest', t:0, color:teal},
+      {label:'Send\nApproval', t:0.2, color:violet},
+      {label:'WAIT FOR\nHUMAN', t:0.4, color:orange, wait:true},
+      {label:'Process\nDecision', t:0.65, color:green},
+      {label:'Complete', t:0.85, color:teal},
+    ];
+    
+    // Timeline bar
+    const tx2 = 40, tw = w-80, ty = h*0.4;
+    ctx.fillStyle = borderCol(); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(tx2, ty-3, tw, 6, 3); ctx.fill();
+    
+    phases.forEach((ph, i) => {
+      const px = tx2 + ph.t * tw;
+      const active = lrT > ph.t;
+      const col = ph.color();
+      
+      // Node
+      ctx.fillStyle = active ? col+'33' : borderCol()+'22';
+      ctx.strokeStyle = active ? col : borderCol();
+      ctx.lineWidth = 1.5;
+      if (ph.wait) {
+        ctx.strokeStyle = orange(); ctx.lineWidth = 2;
+        const blink = Math.sin(lrT * Math.PI * 6) > 0 && !active;
+      }
+      ctx.beginPath(); ctx.arc(px, ty, 14, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+      
+      // Label
+      const above = i % 2 === 0;
+      ctx.fillStyle = active ? col : textCol(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      const lines = ph.label.split('\n');
+      lines.forEach((l, li) => ctx.fillText(l, px, above ? ty-28+li*12 : ty+30+li*12));
+      
+      // Progress dot on timeline
+      if (i < phases.length-1) {
+        const nextPx = tx2 + phases[i+1].t * tw;
+        if (active && lrT < phases[i+1].t) {
+          const prog = (lrT - ph.t) / (phases[i+1].t - ph.t);
+          const dotX = px + (nextPx - px) * prog;
+          ctx.fillStyle = col; ctx.beginPath(); ctx.arc(dotX, ty, 4, 0, Math.PI*2); ctx.fill();
+        }
+      }
+    });
+    
+    // WAIT zone highlight
+    const waitStart = tx2 + 0.2 * tw;
+    const waitEnd = tx2 + 0.65 * tw;
+    const waitPhase = lrT > 0.2 && lrT < 0.65;
+    ctx.fillStyle = orange() + (waitPhase ? '22' : '11');
+    ctx.strokeStyle = orange() + (waitPhase ? '66' : '22');
+    ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.roundRect(waitStart, ty-30, waitEnd-waitStart, 60, 4); ctx.fill(); ctx.stroke();
+    ctx.setLineDash([]);
+    if (waitPhase) {
+      ctx.fillStyle = orange(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('DORMANT — zero compute', (waitStart+waitEnd)/2, ty+50);
+      ctx.fillText('State serialised to storage', (waitStart+waitEnd)/2, ty+62);
+    }
+    
+    // Time labels
+    ctx.fillStyle = textCol(); ctx.font = '8px Inter'; ctx.textAlign = 'left';
+    ctx.fillText('T=0', tx2, h-16);
+    ctx.textAlign = 'center';
+    ctx.fillText('Hours / Days / Weeks', w/2, h-16);
+    ctx.textAlign = 'right';
+    ctx.fillText('T=resume', w-tx2, h-16);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C6: ERROR HANDLING =====================
+let errT = 0;
+function drawError() {
+  const s = setupCanvas('c-error', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  function frame() {
+    errT = (errT + 0.006) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const cx = w*0.35, startY = 30;
+    
+    // Happy path nodes
+    const happy = [
+      {label:'TRIGGER', y:startY},
+      {label:'CALL API', y:startY+70},
+      {label:'SCOPE\nSTART', y:startY+140},
+      {label:'⚠ FAIL', y:startY+210, failed:true},
+    ];
+    
+    happy.forEach((n, i) => {
+      const active = errT > i * 0.2;
+      const col = n.failed ? danger() : teal();
+      ctx.fillStyle = col+'22'; ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(cx-35, n.y, 70, 30, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      const lines = n.label.split('\n');
+      lines.forEach((l,li) => ctx.fillText(l, cx, n.y+12+li*12));
+      
+      if (i < happy.length-1) {
+        ctx.strokeStyle = active ? teal() : borderCol(); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(cx, n.y+30); ctx.lineTo(cx, happy[i+1].y); ctx.stroke();
+      }
+    });
+    
+    // Retry badge
+    if (errT > 0.6) {
+      ctx.fillStyle = orange()+'22'; ctx.strokeStyle = orange(); ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.arc(cx+55, startY+225, 20, 0, Math.PI*2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = orange(); ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('RETRY', cx+55, startY+222); ctx.fillText('×4', cx+55, startY+232);
+    }
+    
+    // Error branch (right side)
+    if (errT > 0.7) {
+      const bx = cx + 80;
+      const by = startY + 240;
+      
+      // Branch line
+      ctx.strokeStyle = danger(); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(cx+35, startY+225); ctx.lineTo(bx, by-14); ctx.stroke();
+      
+      const errNodes = [{l:'NOTIFY\nOPS', y:by}, {l:'DEAD-\nLETTER', y:by+70}];
+      errNodes.forEach((en, ei) => {
+        ctx.fillStyle = danger()+'22'; ctx.strokeStyle = danger(); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(bx-28, en.y, 56, 28, 4); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = danger(); ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+        const ls = en.l.split('\n');
+        ls.forEach((l,li) => ctx.fillText(l, bx, en.y+10+li*11));
+        if (ei < errNodes.length-1) {
+          ctx.strokeStyle = danger(); ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(bx, en.y+28); ctx.lineTo(bx, errNodes[ei+1].y); ctx.stroke();
+        }
+      });
+      
+      // Run-after label
+      ctx.fillStyle = danger(); ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('run-after: failed', bx, by-20);
+    }
+    
+    ctx.fillStyle = textCol(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Failure branches are explicit visual paths', w/2, h-16);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C7: PARALLEL =====================
+let parT = 0;
+function drawParallel() {
+  const s = setupCanvas('c-parallel', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  const branches = [
+    {label:'Call CRM', x:0.2, color:teal},
+    {label:'Call ERP', x:0.5, color:violet},
+    {label:'Send Email', x:0.8, color:orange},
+  ];
+  
+  function frame() {
+    parT += 0.008;
+    ctx.clearRect(0,0,w,h);
+    
+    const topY = 50, splitY = 90, joinY = 260, endY = 310;
+    const cx = w/2;
+    
+    // Start
+    ctx.fillStyle = teal()+'22'; ctx.strokeStyle = teal(); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(cx-35, topY, 70, 28, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('TRIGGER', cx, topY+17);
+    
+    // Fan-out lines
+    branches.forEach(br => {
+      const bx = br.x * w;
+      ctx.strokeStyle = br.color()+'66'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx, topY+28); ctx.lineTo(bx, splitY); ctx.stroke(); ctx.setLineDash([]);
+    });
+    
+    // Branches
+    branches.forEach((br, i) => {
+      const bx = br.x * w;
+      const col = br.color();
+      
+      // Progress
+      const prog = Math.min((parT * 0.5 + i * 0.1) % 1.5, 1);
+      const done = prog > 0.9;
+      const curY = splitY + prog * (joinY - splitY - 40);
+      
+      ctx.fillStyle = col+'22'; ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(bx-35, splitY, 70, 28, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(br.label, bx, splitY+17);
+      
+      // Progress bar
+      const barH = joinY - splitY - 60;
+      ctx.fillStyle = borderCol(); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(bx-3, splitY+32, 6, barH, 3); ctx.fill();
+      ctx.fillStyle = done ? green() : col;
+      ctx.beginPath(); ctx.roundRect(bx-3, splitY+32, 6, barH * prog, 3); ctx.fill();
+      
+      // Moving dot
+      if (!done) {
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(bx, splitY+32 + barH * prog, 5, 0, Math.PI*2); ctx.fill();
+      } else {
+        ctx.fillStyle = green(); ctx.font = '10px Inter'; ctx.textAlign = 'center';
+        ctx.fillText('✓', bx, splitY+32+barH+14);
+      }
+      
+      // Fan-in lines
+      ctx.strokeStyle = (done ? green() : col)+'66'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(bx, joinY-30); ctx.lineTo(cx, joinY); ctx.stroke(); ctx.setLineDash([]);
+    });
+    
+    // JOIN
+    ctx.fillStyle = green()+'22'; ctx.strokeStyle = green(); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(cx-40, joinY, 80, 28, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = green(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('JOIN (wait all)', cx, joinY+17);
+    
+    // Continue
+    ctx.strokeStyle = green()+'66'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(cx, joinY+28); ctx.lineTo(cx, endY); ctx.stroke();
+    ctx.fillStyle = teal()+'22'; ctx.strokeStyle = teal(); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(cx-35, endY, 70, 26, 5); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('COMPLETE', cx, endY+16);
+    
+    ctx.fillStyle = textCol(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Slowest branch determines join latency', cx, h-10);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C8: TRANSFORM =====================
+let trfT = 0;
+function drawTransform() {
+  const s = setupCanvas('c-transform', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  const blocks = [
+    {label:'RAW INPUT\nXML/JSON', x:0.12, color:orange},
+    {label:'SCHEMA\nVALIDATE', x:0.32, color:violet},
+    {label:'LIQUID\nMAP', x:0.52, color:teal},
+    {label:'XSLT\nTRANSFORM', x:0.72, color:green},
+    {label:'CLEAN\nOUTPUT', x:0.9, color:teal},
+  ];
+  
+  function frame() {
+    trfT += 0.008;
+    ctx.clearRect(0,0,w,h);
+    
+    const cy2 = h * 0.45;
+    
+    blocks.forEach((bl, i) => {
+      const bx = bl.x * w;
+      const col = bl.color();
+      const prog = (trfT + i * 0.2) % 1;
+      const active = Math.sin(trfT * 2 - i * 0.8) > 0.3;
+      
+      // Block
+      ctx.fillStyle = col+'22'; ctx.strokeStyle = active ? col : col+'44'; ctx.lineWidth = active ? 2 : 1;
+      ctx.beginPath(); ctx.roundRect(bx-36, cy2-22, 72, 44, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+      const ls = bl.label.split('\n');
+      ls.forEach((l,li) => ctx.fillText(l, bx, cy2-8+li*13));
+      
+      // Connector line to next
+      if (i < blocks.length-1) {
+        const nx = blocks[i+1].x * w;
+        ctx.strokeStyle = borderCol(); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx+36, cy2); ctx.lineTo(nx-36, cy2); ctx.stroke();
+        
+        // Particle
+        const px = bx + 36 + prog * (nx - 36 - bx - 36);
+        ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px, cy2, 4, 0, Math.PI*2); ctx.fill();
+      }
+      
+      // Schema badge below
+      const badges = ['XML/JSON', 'AJV/XSD', 'Liquid', 'XSLT 1.0', 'JSON'];
+      ctx.fillStyle = col+'22'; ctx.strokeStyle = col+'44'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.roundRect(bx-28, cy2+30, 56, 18, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = '7px Inter'; ctx.textAlign = 'center';
+      ctx.fillText(badges[i], bx, cy2+42);
+    });
+    
+    ctx.fillStyle = textCol(); ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Data shape shifts at each transformation boundary', w/2, h-14);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C11: OBSERVABILITY =====================
+let obsT = 0;
+function drawObs() {
+  const s = setupCanvas('c-obs', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  const runs = [
+    {t:0.05, dur:0.8, status:'SUCCESS'},
+    {t:0.12, dur:0.6, status:'SUCCESS'},
+    {t:0.22, dur:1.2, status:'FAILED'},
+    {t:0.35, dur:0.4, status:'SUCCESS'},
+    {t:0.42, dur:0.7, status:'SUCCESS'},
+    {t:0.55, dur:2.1, status:'RUNNING'},
+    {t:0.75, dur:0.5, status:'SUCCESS'},
+    {t:0.84, dur:0.9, status:'SUCCESS'},
+  ];
+  
+  function frame() {
+    obsT += 0.006;
+    ctx.clearRect(0,0,w,h);
+    
+    const bx = 60, bw = w-80;
+    const yStep = 36;
+    
+    ctx.fillStyle = textCol(); ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('RUN HISTORY', bx, 22);
+    
+    // Time axis
+    ctx.strokeStyle = borderCol(); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx, 30); ctx.lineTo(bx+bw, 30); ctx.stroke();
+    
+    runs.forEach((run, i) => {
+      const rx = bx + run.t * bw;
+      const ry = 50 + i * yStep;
+      const rw = Math.min(run.dur * 30, bw - run.t * bw);
+      const col = run.status === 'SUCCESS' ? green() : run.status === 'FAILED' ? danger() : orange();
+      
+      // Run bar
+      ctx.fillStyle = col+'33'; ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(rx, ry, rw, 22, 3); ctx.fill(); ctx.stroke();
+      
+      // Status dot
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(rx+8, ry+11, 4, 0, Math.PI*2); ctx.fill();
+      
+      // Label
+      ctx.fillStyle = col; ctx.font = '7px Space Mono'; ctx.textAlign = 'left';
+      ctx.fillText(run.status, rx+16, ry+14);
+      
+      // Duration
+      ctx.fillStyle = textCol(); ctx.font = '7px Inter';
+      ctx.fillText(`${run.dur.toFixed(1)}s`, rx+rw+4, ry+14);
+    });
+    
+    // Hover highlight (animated)
+    const hovIdx = Math.floor(obsT * 0.5) % runs.length;
+    const hr = runs[hovIdx];
+    const hrx = bx + hr.t * bw;
+    const hry = 50 + hovIdx * yStep;
+    ctx.strokeStyle = teal(); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(hrx-2, hry-2, Math.min(hr.dur*30, bw - hr.t*bw)+4, 26, 4); ctx.stroke();
+    
+    // Detail panel
+    ctx.fillStyle = isDark() ? '#141f35' : '#f1f5f9';
+    ctx.strokeStyle = teal(); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(w-180, h-90, 165, 76, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = teal(); ctx.font = '8px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('RUN DETAILS', w-170, h-72);
+    ctx.fillStyle = textCol(); ctx.font = '8px Inter';
+    ctx.fillText(`Status: ${hr.status}`, w-170, h-58);
+    ctx.fillText(`Duration: ${hr.dur.toFixed(1)}s`, w-170, h-46);
+    ctx.fillText('Actions: 12 completed', w-170, h-34);
+    ctx.fillText('Trigger: HTTP request', w-170, h-22);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C13: COST =====================
+function drawCost() {
+  const s = setupCanvas('c-cost', 360); if (!s) return;
+  const {ctx, w, h} = s;
+  
+  ctx.clearRect(0,0,w,h);
+  
+  const ox = 60, oy = h-60, aw = w-90, ah = h-90;
+  
+  // Axes
+  ctx.strokeStyle = borderCol(); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ox, 20); ctx.lineTo(ox, oy); ctx.lineTo(ox+aw, oy); ctx.stroke();
+  
+  // Y-axis label
+  ctx.save(); ctx.translate(16, oy/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = textCol(); ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('MONTHLY COST ($)', 0, 0); ctx.restore();
+  ctx.fillStyle = textCol(); ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('ACTIONS / MONTH →', ox+aw/2, oy+22);
+  
+  // Consumption line (linear)
+  ctx.strokeStyle = teal(); ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= 100; i++) {
+    const x = ox + (i/100)*aw;
+    const actions = i * 1e6; // 0 to 100M
+    const cost = actions * 0.000025;
+    const y = oy - Math.min(cost/2500 * ah, ah);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = teal(); ctx.font = '9px Space Mono'; ctx.textAlign = 'left';
+  ctx.fillText('Consumption', ox+5, 45);
+  ctx.fillText('($0.000025/action)', ox+5, 57);
+  
+  // Standard baseline (flat then cheaper)
+  const stdBaseline = 200; // ~$200/month
+  const stdY = oy - (stdBaseline/2500 * ah);
+  ctx.strokeStyle = violet(); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(ox, stdY); ctx.lineTo(ox+aw, stdY); ctx.stroke();
+  ctx.fillStyle = violet(); ctx.font = '9px Space Mono'; ctx.textAlign = 'right';
+  ctx.fillText('Standard (~$200/month flat)', ox+aw-4, stdY-6);
+  
+  // Breakeven
+  // Breakeven at $200 = N * 0.000025 → N = 8M actions
+  const beX = ox + (8/100)*aw;
+  ctx.strokeStyle = orange(); ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(beX, 20); ctx.lineTo(beX, oy); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = orange(); ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('BREAKEVEN', beX, 32);
+  ctx.fillText('~8M actions/mo', beX, 44);
+  
+  // Shaded zones
+  ctx.fillStyle = teal()+'11';
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(beX, oy); ctx.lineTo(beX, stdY); ctx.lineTo(ox, stdY); ctx.fill();
+  ctx.fillStyle = violet()+'11';
+  ctx.beginPath(); ctx.moveTo(beX, stdY); ctx.lineTo(ox+aw, stdY); ctx.lineTo(ox+aw, oy-((100e6*0.000025)/2500*ah)); ctx.lineTo(beX, oy); ctx.fill();
+  
+  ctx.fillStyle = teal(); ctx.font = '8px Inter'; ctx.textAlign = 'center';
+  ctx.fillText('Consumption cheaper', ox + (beX-ox)/2, oy-14);
+  ctx.fillStyle = violet();
+  ctx.fillText('Standard cheaper', beX + (ox+aw-beX)/2, oy-14);
+  
+  // Y-axis ticks
+  [0, 500, 1000, 1500, 2000, 2500].forEach(v => {
+    const ty = oy - (v/2500*ah);
+    ctx.fillStyle = textCol(); ctx.font = '8px Inter'; ctx.textAlign = 'right';
+    ctx.fillText(`$${v}`, ox-6, ty+4);
+    ctx.strokeStyle = borderCol()+'44'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(ox, ty); ctx.lineTo(ox+aw, ty); ctx.stroke();
+  });
+  
+  // X-axis ticks
+  [0, 25, 50, 75, 100].forEach(v => {
+    const tx2 = ox + (v/100)*aw;
+    ctx.fillStyle = textCol(); ctx.font = '8px Inter'; ctx.textAlign = 'center';
+    ctx.fillText(`${v}M`, tx2, oy+14);
+  });
+}
+
+// ===================== INIT =====================
+function redrawStatics() {
+  drawCost();
+}
+
+// Start animated loops
+drawOrch();
+drawState();
+drawTrigger();
+drawConn();
+drawStates();
+drawLongrun();
+drawError();
+drawParallel();
+drawTransform();
+drawObs();
+
+redrawStatics();
+window.addEventListener('resize', () => setTimeout(redrawStatics, 100));
+</script>
+</body>
+</html>
