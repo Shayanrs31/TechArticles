@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure API Management — First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;700;900&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root[data-theme="dark"] {
+  --bg:    #0c0e12;
+  --bg2:   #10131a;
+  --bg3:   #141820;
+  --surf:  #1a1f2e;
+  --bord:  #232b3e;
+  --text:  #dde4f0;
+  --text2: #7b8aaa;
+  --text3: #3d4d6a;
+  --blue:  #3b82f6;
+  --cyan:  #22d3ee;
+  --violet:#a78bfa;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red:   #f87171;
+  --glow:  rgba(59,130,246,0.14);
+  --glow2: rgba(34,211,238,0.10);
+  --card:  #12161f;
+}
+:root[data-theme="light"] {
+  --bg:    #f4f7ff;
+  --bg2:   #eef1fb;
+  --bg3:   #e8ecf8;
+  --surf:  #ffffff;
+  --bord:  #d1d9f0;
+  --text:  #0f1629;
+  --text2: #4a5880;
+  --text3: #9aa5c4;
+  --blue:  #1d4ed8;
+  --cyan:  #0891b2;
+  --violet:#7c3aed;
+  --green: #059669;
+  --amber: #d97706;
+  --red:   #dc2626;
+  --glow:  rgba(29,78,216,0.07);
+  --glow2: rgba(8,145,178,0.06);
+  --card:  #ffffff;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  font-family:'DM Sans',sans-serif;
+  background:var(--bg); color:var(--text);
+  line-height:1.7; transition:background .35s,color .35s;
+}
+
+/* ── TOP BAR ── */
+#bar{
+  position:fixed;top:0;left:0;right:0;z-index:200;
+  height:54px; background:var(--bg);
+  border-bottom:1px solid var(--bord);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 32px;
+}
+#prog{
+  position:fixed;top:54px;left:0;right:0;height:2px;z-index:201;
+  background:linear-gradient(90deg,var(--blue),var(--cyan));
+  transform-origin:left;transform:scaleX(0);transition:transform .1s;
+}
+.brand{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;
+  color:var(--text3);text-transform:uppercase;}
+.sind{font-family:'Space Mono',monospace;font-size:10px;color:var(--blue);letter-spacing:.1em;}
+.tbtn{
+  background:var(--surf);border:1px solid var(--bord);
+  color:var(--text2);cursor:pointer;padding:5px 16px;
+  border-radius:20px;font-size:11px;font-family:'Space Mono',monospace;
+  letter-spacing:.06em;transition:all .2s;
+}
+.tbtn:hover{border-color:var(--blue);color:var(--blue);}
+
+/* ── SIDENAV ── */
+#snav{
+  position:fixed;right:18px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:7px;z-index:190;
+}
+.dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--bord);cursor:pointer;transition:all .3s;
+}
+.dot.active{background:var(--blue);transform:scale(1.5);}
+
+/* ── HERO ── */
+#hero{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;text-align:center;padding:80px 40px;
+  background:radial-gradient(ellipse 75% 55% at 50% 40%, var(--glow), transparent),
+             radial-gradient(ellipse 45% 35% at 75% 65%, var(--glow2), transparent);
+}
+.h-label{
+  font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.2em;
+  color:var(--blue);text-transform:uppercase;margin-bottom:22px;
+  border:1px solid var(--blue);padding:4px 14px;border-radius:20px;display:inline-block;
+}
+.h-title{
+  font-family:'Fraunces',serif;
+  font-size:clamp(46px,8vw,92px);font-weight:900;line-height:1.0;margin-bottom:18px;
+  background:linear-gradient(135deg,var(--text) 30%,var(--blue) 65%,var(--cyan));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.h-sub{font-size:16px;color:var(--text2);max-width:560px;margin:0 auto 40px;line-height:1.8;}
+.h-tags{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+.htag{
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;
+  padding:4px 12px;border-radius:4px;border:1px solid var(--bord);
+  color:var(--text3);text-transform:uppercase;
+}
+
+/* ── STAGES ── */
+.stage{
+  min-height:100vh;padding:88px 0 72px;
+  display:flex;align-items:center;justify-content:center;
+}
+.stage:nth-child(even){background:var(--bg2);}
+.si{
+  max-width:1120px;width:100%;margin:0 auto;padding:0 44px;
+  display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:start;
+}
+.si.full{grid-template-columns:1fr;max-width:960px;}
+
+/* ── LEFT CONTENT ── */
+.snum{font-family:'Space Mono',monospace;font-size:10px;color:var(--blue);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px;}
+.stitle{font-family:'Fraunces',serif;font-size:clamp(26px,3.5vw,40px);
+  font-weight:700;line-height:1.15;margin-bottom:18px;}
+.narr{font-size:14px;color:var(--text2);margin-bottom:24px;line-height:1.9;}
+.mcards{display:flex;flex-direction:column;gap:10px;}
+.mc{background:var(--surf);border:1px solid var(--bord);border-radius:10px;padding:14px 18px;}
+.mcl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--blue);margin-bottom:5px;}
+.mc p{font-size:12px;color:var(--text2);line-height:1.65;}
+
+/* ── VIS BOX ── */
+.vbox{
+  background:var(--card);border:1px solid var(--bord);
+  border-radius:14px;overflow:hidden;
+  box-shadow:0 0 60px var(--glow);
+}
+.vbox canvas{display:block;width:100%;}
+.vlabel{
+  font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);
+  text-align:center;padding:8px;border-top:1px solid var(--bord);
+  letter-spacing:.08em;text-transform:uppercase;
+}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.tbtn2{
+  font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;
+  padding:6px 14px;border-radius:20px;border:1px solid var(--bord);
+  background:var(--surf);color:var(--text3);cursor:pointer;transition:all .2s;
+  text-transform:uppercase;
+}
+.tbtn2.active{background:var(--blue);color:#fff;border-color:var(--blue);}
+.tc{display:none;}
+.tc.active{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.scard{background:var(--surf);border:1px solid var(--bord);border-radius:10px;padding:14px;}
+.scard h4{font-family:'Space Mono',monospace;font-size:9px;color:var(--cyan);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px;}
+.scard p{font-size:12px;color:var(--text2);line-height:1.6;}
+
+/* ── COMPARE TABLE ── */
+.ct{width:100%;border-collapse:collapse;font-size:12px;}
+.ct th{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text3);padding:10px 14px;
+  border-bottom:1px solid var(--bord);text-align:left;}
+.ct td{padding:10px 14px;border-bottom:1px solid var(--bord);color:var(--text2);vertical-align:top;}
+.ct tr:last-child td{border-bottom:none;}
+.ct tr td:first-child{font-family:'Space Mono',monospace;font-size:11px;color:var(--text);}
+.ct tr:nth-child(even) td{background:var(--glow);}
+.yes{color:var(--green);} .no{color:var(--red);} .maybe{color:var(--amber);}
+
+/* ── BADGE ── */
+.badge{display:inline-block;font-family:'Space Mono',monospace;font-size:9px;
+  padding:3px 9px;border-radius:4px;margin:2px 3px;}
+.bblue{background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.25);}
+.bcyan{background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid rgba(34,211,238,.25);}
+.bgreen{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.25);}
+.bamber{background:rgba(251,191,36,.12);color:var(--amber);border:1px solid rgba(251,191,36,.25);}
+.bred{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.25);}
+.bviolet{background:rgba(167,139,250,.12);color:var(--violet);border:1px solid rgba(167,139,250,.25);}
+
+/* ── FADE ── */
+.fade-up{opacity:0;transform:translateY(22px);transition:opacity .65s,transform .65s;}
+.fade-up.visible{opacity:1;transform:none;}
+
+/* ── PATTERN GRID ── */
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.pcard{background:var(--surf);border:1px solid var(--bord);border-radius:10px;padding:16px;}
+.pcard h4{font-family:'Space Mono',monospace;font-size:9px;color:var(--blue);
+  text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+.pcard p{font-size:12px;color:var(--text2);line-height:1.55;}
+
+@media(max-width:768px){
+  .si{grid-template-columns:1fr;gap:32px;padding:0 20px;}
+  .tc.active,.pgrid{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <span class="brand">Azure API Management — First Principles</span>
+  <span class="sind" id="sind">STAGE 0 / 13</span>
+  <button class="tbtn" onclick="toggleTheme()" id="tbtn">☀ LIGHT</button>
+</div>
+<div id="prog"></div>
+<nav id="snav"></nav>
+
+<!-- HERO -->
+<section id="s0">
+<div id="hero">
+  <div class="h-label">14 Stages · Control Plane · Failure-First · Architect Level</div>
+  <h1 class="h-title">Azure API<br>Management</h1>
+  <p class="h-sub">The control plane between your clients and backend services. Governance, security, throttling, and transformation — without touching your code.</p>
+  <div class="h-tags">
+    <span class="htag">API Gateway</span>
+    <span class="htag">Policy Engine</span>
+    <span class="htag">Rate Limiting</span>
+    <span class="htag">JWT Validation</span>
+    <span class="htag">Protocol Translation</span>
+    <span class="htag">Versioning</span>
+    <span class="htag">Developer Portal</span>
+    <span class="htag">VNet Integration</span>
+  </div>
+</div>
+</section>
+
+<!-- S0: API SPRAWL -->
+<section id="s1" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 0 — The API Sprawl Problem</div>
+    <h2 class="stitle">Raw Endpoints Are an Incident Waiting to Happen</h2>
+    <p class="narr">When every backend service exposes its endpoint directly to clients, you have no central point of control — authentication is inconsistent, rate limits don't exist, and any change to a backend URL breaks consumers. API sprawl is the natural entropy of microservices without governance, and it compounds with every new service you add.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Without a gateway, security is applied per-service — inconsistently, incompletely, and with no single audit trail. One unprotected endpoint becomes the breach vector for the entire estate.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Each team owns their API's security." In practice, this produces N different security implementations, N different logging formats, and N different failure surfaces. Governance requires a choke point.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Direct exposure:</strong> simple, low latency, no single point of failure.<br>
+        <strong style="color:var(--blue)">Gateway:</strong> consistent security, governance, observability — but adds a hop and a failure boundary.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-sprawl" height="360"></canvas>
+    <div class="vlabel">API Sprawl → Gateway Control Plane</div></div>
+</div>
+</section>
+
+<!-- S1: GATEWAY MENTAL MODEL -->
+<section id="s2" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 1 — Gateway Mental Model</div>
+    <h2 class="stitle">A Guarded Checkpoint, Not a Proxy</h2>
+    <p class="narr">APIM sits between all clients and all backend services. It does not replace your backends — it governs access to them. Think of it as border control: every request entering must pass inspection before being forwarded. The backend remains unchanged; the gateway adds the control layer in front of it.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Architects who treat APIM as "just a reverse proxy" under-invest in policy design and end up with a gateway that provides no meaningful protection — adding latency without adding value.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"APIM replaces backend authentication." No. APIM validates the client's identity at the gateway boundary. Backend services should still enforce their own authorization for defence-in-depth. The gateway is the outer wall, not the only wall.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> consistent client experience regardless of backend complexity.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> every request now has an APIM hop — adds ~1–5ms per request plus any policy processing time.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-gw" height="360"></canvas>
+    <div class="vlabel">Traffic flowing through the gateway checkpoint</div></div>
+</div>
+</section>
+
+<!-- S2: POLICY ENGINE -->
+<section id="s3" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 2 — The Policy Engine</div>
+    <h2 class="stitle">Declarative Middleware on Every Request</h2>
+    <p class="narr">Policies are XML-declared transformations and controls that execute on every request passing through the gateway. They execute in four phases: inbound (before the backend), backend (as the call is made), outbound (on the response), and on-error. Each phase has access to request context, response data, and the ability to terminate execution early.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Policies are executed synchronously on every request. A misconfigured policy — one that makes an external HTTP call, runs complex XSLT, or has an unhandled error — adds latency to every single request in production, not just the ones being tested.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Policies are just configuration." Policies are code. They have bugs, they have performance characteristics, and they need testing. The XML surface hides the fact that you're writing middleware that runs at scale.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> cross-cutting concerns (auth, logging, CORS, caching) applied without touching backend code.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> policy complexity grows as requirements grow — large policy chains are difficult to test and reason about.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-policy" height="360"></canvas>
+    <div class="vlabel">Four-phase policy execution pipeline</div></div>
+</div>
+</section>
+
+<!-- S3: SECURITY BOUNDARY -->
+<section id="s4" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 3 — Security Boundary</div>
+    <h2 class="stitle">Layered Gates, Not a Single Lock</h2>
+    <p class="narr">APIM is typically the internet-facing security boundary. A well-designed security posture layers multiple controls — subscription key verification, IP allowlisting, JWT validation, OAuth scopes, and rate limiting — so that compromising one control doesn't grant full access. The gateway enforces all of these declaratively, before the request ever reaches your backend.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Relying on a single security mechanism (just a subscription key, just OAuth) creates a single point of failure. When that mechanism is bypassed or misconfigured, there is no secondary control. Layer your defences.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"A subscription key is authentication." A subscription key identifies a consumer, not a user. It's closer to an API key — it can be shared, leaked, or stolen. JWT validation with short-lived tokens provides actual authentication.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> multiple independent security controls, each requiring separate compromise.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> each security layer adds processing time. JWT validation against a remote JWKS endpoint adds a cache-miss latency spike on cold starts.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-sec" height="360"></canvas>
+    <div class="vlabel">Layered security gates — each inspects independently</div></div>
+</div>
+</section>
+
+<!-- S4: THROTTLING -->
+<section id="s5" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 4 — Traffic Control and Throttling</div>
+    <h2 class="stitle">Protect the Backend from Its Own Clients</h2>
+    <p class="narr">Rate limits and quotas at the gateway exist to protect backends that cannot elastically scale — legacy systems, databases with connection limits, third-party APIs with usage caps. APIM smooths traffic spikes by returning 429 responses at the gateway before requests even reach the backend, preventing cascade failures from load amplification.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Without gateway-level throttling, a traffic spike that doubles in 10 seconds will reach your backend doubled. If your backend can't absorb it, it falls over — and now all traffic, not just the excess, fails.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Rate limits are for external clients only." Internal services can cause just as much damage. A retry loop in a microservice that backs off incorrectly can generate 10× normal load on the same backend. Apply rate limits to internal consumers too.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> backend protection, predictable load, fair usage enforcement across consumers.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> legitimate traffic gets rejected during spikes. Requires careful calibration — too tight and normal load gets throttled.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-throttle" height="360"></canvas>
+    <div class="vlabel">Traffic surge absorbed at gateway — backend sees smooth load</div></div>
+</div>
+</section>
+
+<!-- S5: TRANSFORMATION -->
+<section id="s6" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 5 — Transformation Layer</div>
+    <h2 class="stitle">Reshape Before It Arrives, Reshape Before It Returns</h2>
+    <p class="narr">APIM can rewrite request headers, transform JSON payloads, strip sensitive fields from responses, and translate between protocols — including converting SOAP XML into REST JSON. This lets legacy backends appear modern to clients, and lets clients remain unaware of backend implementation details. The gateway absorbs the impedance mismatch.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Without transformation, clients must adapt to every backend's quirks — different auth header formats, different response envelopes, different error schemas. With gateway transformation, you own the client contract independently of backend evolution.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"SOAP to REST transformation is seamless." The protocol surface translates, but the semantic model doesn't. SOAP operations and REST resources are different design paradigms. Translation produces a functional facade, not a well-designed API.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> clients get a consistent API surface regardless of backend heterogeneity.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> heavy transformation logic (large XSLT, complex Liquid templates) adds meaningful latency. Transformation policies are hard to debug in production.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-transform" height="360"></canvas>
+    <div class="vlabel">Request and response transformation pipeline</div></div>
+</div>
+</section>
+
+<!-- S6: VERSIONING -->
+<section id="s7" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 6 — Versioning and Revision Management</div>
+    <h2 class="stitle">Versions for Clients, Revisions for You</h2>
+    <p class="narr">APIM separates two concerns: versions are for breaking changes visible to consumers (v1 and v2 running simultaneously), while revisions are for non-breaking changes you want to stage and test before making current. This lets you evolve APIs without forcing immediate client upgrades, and roll back quietly if a revision causes issues.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Forcing clients to upgrade simultaneously is operationally impossible at scale. Maintaining parallel versions requires discipline — dead versions accumulate, security patches must be applied to every active version, and sunset timelines are rarely enforced.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Revisions are just drafts." Revisions are deployed, live, and can receive traffic. The distinction from "current" is that they aren't the default. A revision with a bug is a live bug, not a draft bug.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> safe rollout, backward compatibility, non-destructive iteration.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> version sprawl if not actively managed. Every live version is a maintenance surface that needs security patching.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-version" height="360"></canvas>
+    <div class="vlabel">v1 and v2 running in parallel with revision staging</div></div>
+</div>
+</section>
+
+<!-- S7: PRODUCTS -->
+<section id="s8" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 7 — Products and Consumer Management</div>
+    <h2 class="stitle">Package APIs as Commercial Offerings</h2>
+    <p class="narr">Products are bundles of APIs with attached rate limit policies and subscriber permissions. A consumer subscribes to a product (not an individual API), receives a subscription key, and gains access to all APIs in that bundle under the product's policies. This separation lets you create tiers — free, standard, premium — with different limits without changing the underlying APIs.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Without products, rate limits are applied uniformly. With products, you can give a paying enterprise customer 10,000 requests/minute while a free-tier consumer gets 100/minute — both calling the same underlying API.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"The developer portal is just documentation." The developer portal is also the self-service subscription management surface. Consumers discover, try, and subscribe to APIs there. A neglected developer portal is a barrier to adoption, not just aesthetics.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> tiered access control, self-service onboarding, product-level monetisation signals.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> product model adds indirection. Debugging "why did this request fail" requires tracing through product → subscription → API → policy chain.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-product" height="360"></canvas>
+    <div class="vlabel">APIs bundled into tiered products with subscription keys</div></div>
+</div>
+</section>
+
+<!-- S8: NETWORKING -->
+<section id="s9" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 8 — Networking and Deployment Models</div>
+    <h2 class="stitle">Where the Gateway Lives Determines What It Can Reach</h2>
+    <p class="narr">APIM deployment topology determines your security boundary and latency profile. External mode exposes the gateway to the internet. Internal mode keeps it VNet-private, requiring a front-door like Application Gateway for internet-facing traffic. The self-hosted gateway extends APIM policies to on-premises or other clouds. Premium tier enables multi-region with regional gateway instances.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>A gateway deployed in external mode with backends on private VNets requires VNet peering or private endpoints for backend connectivity. Misconfiguring this produces a gateway that can reach the internet but not its own backends.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"VNet injection makes APIM private." VNet integration means APIM can reach private backends. In external mode, the gateway management plane and developer portal are still publicly accessible. True isolation requires internal mode plus a WAF in front.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Premium multi-region:</strong> low-latency global routing, regional failover.<br>
+        <strong style="color:var(--red)">Cost:</strong> Premium tier starts at ~$2,800/month per unit. Multi-region multiplies this per region. Not a casual architecture decision.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-net" height="360"></canvas>
+    <div class="vlabel">Deployment topologies — external, internal, multi-region</div></div>
+</div>
+</section>
+
+<!-- S9: OBSERVABILITY -->
+<section id="s10" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 9 — Observability and Analytics</div>
+    <h2 class="stitle">The Gateway Sees Everything — If You Wire It Up</h2>
+    <p class="narr">APIM emits request logs, metrics, and traces to Azure Monitor and Application Insights. Every request generates a correlation ID that follows it through backend calls. The built-in analytics dashboard shows request volume, error rates, response time percentiles, and top consumers — giving you visibility into how your APIs are actually used, not how you assumed they'd be used.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Without gateway logging, you have no single view of API usage across services. You're stitching together backend logs from multiple systems, none of which see the full client picture including auth failures and rejected requests.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Application Insights integration is automatic." You must configure the logger in APIM settings and set the sampling rate. At 100% sampling on a high-traffic gateway, Application Insights ingestion costs can exceed APIM costs. Set sampling to 5–10% and use structured logging policies for important traces.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> single pane of glass for all API traffic, client-level analytics, correlation across backend calls.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> logging every request at the gateway adds latency to that request. Application Insights sampling must be tuned to avoid cost explosion.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-obs" height="360"></canvas>
+    <div class="vlabel">Live request metrics and error rate dashboard</div></div>
+</div>
+</section>
+
+<!-- S10: FAILURE MODES -->
+<section id="s11" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 10 — Failure Modes</div>
+    <h2 class="stitle">The Gateway Can Become the Problem</h2>
+    <p class="narr">APIM is a single logical plane that every request passes through. A misconfigured policy that introduces a 500ms delay affects every request. A gateway at capacity becomes the bottleneck for your entire API estate. Backend failures surface as gateway errors to clients — without careful error policy design, clients can't distinguish gateway failures from backend failures.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>In a 503 incident, your first debugging question should be: is the backend down, or is APIM failing to reach it? Without structured error responses and separate health checks, these are indistinguishable from the client's perspective.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"APIM is managed so it doesn't fail." APIM is multi-region in Premium, but single-region in lower tiers. A regional Azure outage in a non-premium deployment takes your entire API gateway offline. Plan for gateway unavailability, not just backend unavailability.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Gain:</strong> centralised failure handling and retry logic across all backends.<br>
+        <strong style="color:var(--red)">Sacrifice:</strong> centralising creates concentration risk. All failure modes now have gateway as a potential common cause.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-fail" height="360"></canvas>
+    <div class="vlabel">Gateway failure modes and blast radius</div></div>
+</div>
+</section>
+
+<!-- S11: WHEN NOT TO USE -->
+<section id="s12" class="stage fade-up">
+<div class="si full">
+  <div>
+    <div class="snum">Stage 11 — When NOT to Use APIM</div>
+    <h2 class="stitle">The Honest Comparison</h2>
+    <p class="narr" style="max-width:700px">APIM is an API management platform. It is not a load balancer, a WAF, a service mesh, or a CDN. Misidentifying it as one of those leads to missing capabilities being discovered in production.</p>
+    <br>
+    <table class="ct" style="background:var(--card);border-radius:12px;overflow:hidden;border:1px solid var(--bord);">
+      <thead><tr>
+        <th>Concern</th><th>APIM</th><th>App Gateway / WAF</th><th>Front Door</th><th>Service Mesh</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>API governance + policies</td><td class="yes">Native</td><td class="no">None</td><td class="no">None</td><td class="no">None</td></tr>
+        <tr><td>Layer 7 load balancing</td><td class="maybe">Basic backend LB</td><td class="yes">Full</td><td class="yes">Global anycast</td><td class="maybe">Per-service</td></tr>
+        <tr><td>WAF / DDoS protection</td><td class="no">Not built-in</td><td class="yes">Built-in WAF</td><td class="yes">Built-in WAF</td><td class="no">Not applicable</td></tr>
+        <tr><td>East-west service security</td><td class="no">External only</td><td class="no">North-south only</td><td class="no">External only</td><td class="yes">mTLS, policy</td></tr>
+        <tr><td>Global CDN / caching</td><td class="maybe">Response caching</td><td class="no">Regional</td><td class="yes">PoP caching</td><td class="no">—</td></tr>
+        <tr><td>Developer portal / subscriptions</td><td class="yes">Built-in</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+        <tr><td>Protocol translation (SOAP→REST)</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+        <tr><td>Latency overhead</td><td class="maybe">~1–10ms + policies</td><td class="yes">~1–3ms</td><td class="yes">Network edge</td><td class="yes">~&lt;1ms sidecar</td></tr>
+      </tbody>
+    </table>
+    <br>
+    <div class="mc">
+      <div class="mcl">The Decision Rule</div>
+      <p>Use APIM when you need API lifecycle management, policy-based governance, versioning, and a developer portal. Pair it with Application Gateway or Front Door for WAF. They are complementary, not alternatives — APIM sits behind the WAF, handling API semantics while the WAF handles network-layer protection.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- S12: SCENARIOS -->
+<section id="s13" class="stage fade-up">
+<div class="si full">
+  <div>
+    <div class="snum">Stage 12 — Real World Architect Scenarios</div>
+    <h2 class="stitle">Where APIM Belongs</h2>
+    <p class="narr" style="max-width:700px">APIM fits problems involving multiple consumers, API lifecycle management, and controlled exposure of backend services. Here are four canonical patterns.</p>
+    <div class="tabs">
+      <button class="tbtn2 active" onclick="showTab('sc-partner',event)">External Partner API</button>
+      <button class="tbtn2" onclick="showTab('sc-micro',event)">Internal Microservices</button>
+      <button class="tbtn2" onclick="showTab('sc-saas',event)">Multi-Tenant SaaS</button>
+      <button class="tbtn2" onclick="showTab('sc-soap',event)">Legacy SOAP Modernisation</button>
+    </div>
+    <div id="sc-partner" class="tc active">
+      <div class="scard"><h4>Why APIM Fits</h4><p>Partners need self-service onboarding, rate-limited access, and stable API contracts independent of your backend changes. APIM products and the developer portal cover all three without custom portal development.</p></div>
+      <div class="scard"><h4>Security Considerations</h4><p>Pair with OAuth2/OpenID for partner identity. Use subscription keys for API identification. Place Application Gateway with WAF in front. Never expose APIM management endpoints publicly. Use named values for secrets — never hardcode in policies.</p></div>
+      <div class="scard"><h4>Scaling Model</h4><p>Consumption tier for variable partner traffic. Premium for partners with SLA requirements. Monitor per-subscription usage to detect anomalies. Set per-product quotas to prevent any single partner from monopolising capacity.</p></div>
+      <div class="scard"><h4>Risk Areas</h4><p>Subscription key leakage — rotate on suspicion, not on schedule. Retired partner subscriptions that still hold active keys. Policies applied at wrong scope (global vs product vs API vs operation) producing unintended behaviour for specific partners.</p></div>
+    </div>
+    <div id="sc-micro" class="tc">
+      <div class="scard"><h4>Why APIM Fits</h4><p>Internal microservices gateway provides a stable internal contract, centralised auth (service principals, managed identity), and cross-service observability. Teams can evolve their backends without updating every consumer — only the APIM facade changes.</p></div>
+      <div class="scard"><h4>Security Considerations</h4><p>Use managed identity for APIM-to-backend auth. Internal VNet mode — gateway is not internet-accessible. Validate JWT tokens from your internal identity provider. Apply per-service rate limits to prevent one service from overloading another.</p></div>
+      <div class="scard"><h4>Scaling Model</h4><p>Standard or Premium tier depending on throughput. Self-hosted gateway for services in non-Azure environments. Premium for multi-region if internal services span regions. Monitor gateway unit utilisation — scale before hitting ceiling.</p></div>
+      <div class="scard"><h4>Risk Areas</h4><p>Latency amplification — every inter-service call now has a gateway hop. For high-frequency internal calls (&gt;100 TPS), measure the latency overhead before committing. Service mesh may be more appropriate for east-west traffic at scale.</p></div>
+    </div>
+    <div id="sc-saas" class="tc">
+      <div class="scard"><h4>Why APIM Fits</h4><p>Multi-tenant SaaS needs per-tenant rate limits, tenant-aware routing, and isolation between subscribers. APIM subscription keys map naturally to tenants. Named values and policy expressions enable tenant-context-aware policy execution.</p></div>
+      <div class="scard"><h4>Security Considerations</h4><p>Validate tenant identity at gateway — not just that a key exists, but that the key belongs to an active, paid tenant. Extract tenant ID from JWT claims and inject as a header for backend routing. Prevent cross-tenant data leakage in transformation policies.</p></div>
+      <div class="scard"><h4>Scaling Model</h4><p>Consumption tier grows with tenant count cost-effectively. At high tenant volume, Premium with autoscaling provides predictable capacity. Design products for tenant tiers (trial, standard, enterprise) with different quota profiles.</p></div>
+      <div class="scard"><h4>Risk Areas</h4><p>Noisy neighbour — one high-volume tenant consuming quota that affects gateway capacity for others. Set per-subscription limits. Monitor top consumers. Circuit-breaker policies on backends prevent one tenant's traffic spike from cascading to all.</p></div>
+    </div>
+    <div id="sc-soap" class="tc">
+      <div class="scard"><h4>Why APIM Fits</h4><p>SOAP-to-REST modernisation lets you present a REST API surface to clients while keeping the WSDL-bound backend unchanged. APIM imports WSDL, generates REST operations, and handles the envelope translation via policy. Clients see JSON; the backend sees SOAP.</p></div>
+      <div class="scard"><h4>Security Considerations</h4><p>SOAP backends often use WS-Security or basic auth — credentials managed in APIM named values, not in policy XML. Validate REST-layer auth at gateway; don't expose SOAP auth requirements to REST clients. Map REST error codes to appropriate HTTP semantics.</p></div>
+      <div class="scard"><h4>Scaling Model</h4><p>SOAP backends are often the scaling constraint — they're legacy for a reason. Use APIM rate limits to protect them. Don't assume the REST facade scales infinitely just because APIM does — the backend bottleneck moves upstream, not away.</p></div>
+      <div class="scard"><h4>Risk Areas</h4><p>Semantic loss in translation — SOAP operations may have stateful or transactional semantics that don't survive REST mapping. Test the translated API with the actual backend, not mocks. XSLT transformation bugs are production bugs that affect every caller simultaneously.</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- S13: COST -->
+<section id="s14" class="stage fade-up">
+<div class="si">
+  <div>
+    <div class="snum">Stage 13 — Cost and Scaling Model</div>
+    <h2 class="stitle">Units, Regions, and the Premium Cliff</h2>
+    <p class="narr">APIM pricing is tier-based, not purely request-based. Consumption tier bills per million API calls (~$3.50). Developer, Basic, Standard, and Premium tiers bill by the hour per unit — regardless of whether requests are being made. Premium at ~$3,800/unit/month is a significant baseline cost before a single request fires. Multi-region doubles or triples that.</p>
+    <div class="mcards">
+      <div class="mc"><div class="mcl">Why It Matters</div>
+        <p>Teams that start on Premium for "production readiness" and run at 5% utilisation are paying enterprise prices for development-level load. Right-size the tier to actual throughput requirements — you can scale up, but you can't retroactively recover the spend.</p>
+      </div>
+      <div class="mc"><div class="mcl">Common Misconception</div>
+        <p>"Consumption tier is always cheapest." At high volume (hundreds of millions of requests/month), a Standard unit at fixed cost can be cheaper than per-call Consumption billing. Calculate the breakeven point for your expected traffic before committing to a tier.</p>
+      </div>
+      <div class="mc"><div class="mcl">Tradeoff Lens</div>
+        <p><strong style="color:var(--green)">Consumption:</strong> zero baseline, scales to zero, no VNet, no custom domain certs on free tier.<br>
+        <strong style="color:var(--blue)">Premium:</strong> VNet integration, multi-region, SLA, autoscale — at a price that requires a business case.</p>
+      </div>
+    </div>
+  </div>
+  <div class="vbox"><canvas id="c-cost" height="360"></canvas>
+    <div class="vlabel">Tier pricing model and breakeven analysis</div></div>
+</div>
+</section>
+
+<script>
+// ── THEME ──
+function toggleTheme(){
+  const h=document.documentElement,dark=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme',dark?'light':'dark');
+  document.getElementById('tbtn').textContent=dark?'🌙 DARK':'☀ LIGHT';
+  setTimeout(redrawStatics,80);
+}
+const isDark=()=>document.documentElement.getAttribute('data-theme')==='dark';
+const css=(v)=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function col(name){return getComputedStyle(document.documentElement).getPropertyValue('--'+name).trim();}
+
+// ── SIDENAV ──
+const stageN=15,sn=document.getElementById('snav');
+for(let i=0;i<stageN;i++){
+  const d=document.createElement('div');d.className='dot'+(i===0?' active':'');
+  d.onclick=()=>document.getElementById(`s${i}`)?.scrollIntoView({behavior:'smooth'});
+  sn.appendChild(d);
+}
+
+// ── SCROLL ──
+function onScroll(){
+  const sy=window.scrollY,tot=document.body.scrollHeight-window.innerHeight;
+  document.getElementById('prog').style.transform=`scaleX(${sy/tot})`;
+  let cur=0;
+  for(let i=0;i<stageN;i++){
+    const el=document.getElementById(`s${i}`);
+    if(el&&el.getBoundingClientRect().top<window.innerHeight*.55)cur=i;
+  }
+  document.getElementById('sind').textContent=`STAGE ${cur} / 13`;
+  document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===cur));
+}
+window.addEventListener('scroll',onScroll);
+
+// ── FADE ──
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible');}),{threshold:.08});
+document.querySelectorAll('.fade-up').forEach(el=>io.observe(el));
+
+// ── TABS ──
+function showTab(id,ev){
+  document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tbtn2').forEach(b=>b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  ev.target.classList.add('active');
+}
+
+// ── CANVAS SETUP ──
+function setupCanvas(id,h){
+  const c=document.getElementById(id);if(!c)return null;
+  const r=window.devicePixelRatio||1,w=c.parentElement.clientWidth;
+  c.width=w*r;c.height=h*r;c.style.width=w+'px';c.style.height=h+'px';
+  const ctx=c.getContext('2d');ctx.scale(r,r);
+  return{ctx,w,h};
+}
+const blue=()=>col('blue'),cyan=()=>col('cyan'),green=()=>col('green');
+const amber=()=>col('amber'),red=()=>col('red'),violet=()=>col('violet');
+const tx=()=>col('text2'),bord=()=>col('bord'),card=()=>col('card'),surf=()=>col('surf');
+
+// ── C0: SPRAWL ──
+let sprawlT=0;
+function drawSprawl(){
+  const s=setupCanvas('c-sprawl',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    sprawlT+=.007;ctx.clearRect(0,0,w,h);
+    const phase=(sprawlT*.3)%1;
+    const showGw=phase>.5;
+    
+    // CLIENTS (left)
+    const clients=[{y:.2,l:'Mobile'},{y:.45,l:'Web'},{y:.7,l:'Partner'}];
+    clients.forEach(cl=>{
+      const cy=cl.y*h;
+      ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue()+'88';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(10,cy-14,60,28,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=blue();ctx.font='8px Space Mono';ctx.textAlign='center';
+      ctx.fillText(cl.l,40,cy+4);
+    });
+    
+    if(!showGw){
+      // Sprawl mode: direct connections to 5 backends
+      const backs=[{y:.1,l:'Auth API'},{y:.28,l:'Orders'},{y:.46,l:'Payments'},{y:.64,l:'Users'},{y:.82,l:'Legacy'}];
+      backs.forEach((bk,bi)=>{
+        const by=bk.y*h;
+        ctx.fillStyle=amber()+'22';ctx.strokeStyle=amber()+'88';ctx.lineWidth=1;
+        ctx.beginPath();ctx.roundRect(w-80,by-14,70,28,4);ctx.fill();ctx.stroke();
+        ctx.fillStyle=amber();ctx.font='7px Space Mono';ctx.textAlign='center';
+        ctx.fillText(bk.l,w-45,by+4);
+        
+        // Many criss-cross lines
+        clients.forEach(cl=>{
+          const prog=(sprawlT*1.5+bi*.3+clients.indexOf(cl)*.2)%1;
+          const sx=40,sy=cl.y*h,ex=w-80,ey=by;
+          const px=sx+(ex-sx)*prog,py=sy+(ey-sy)*prog;
+          ctx.strokeStyle=amber()+'22';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+          ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);
+          ctx.fillStyle=amber();ctx.beginPath();ctx.arc(px,py,2.5,0,Math.PI*2);ctx.fill();
+        });
+      });
+      ctx.fillStyle=red();ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+      ctx.fillText('NO CONTROL · NO AUTH · NO LIMITS',w/2,h-14);
+    } else {
+      // Gateway mode
+      const gx=w*.45,gw2=70;
+      ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue();ctx.lineWidth=2;
+      ctx.beginPath();ctx.roundRect(gx-gw2/2,h*.3,gw2,h*.4,8);ctx.fill();ctx.stroke();
+      ctx.fillStyle=blue();ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+      ctx.fillText('APIM',gx,h*.47);ctx.fillText('GATEWAY',gx,h*.57);
+      
+      const backs=[{y:.2,l:'Auth'},{y:.45,l:'Orders'},{y:.7,l:'Legacy'}];
+      backs.forEach((bk,bi)=>{
+        const by=bk.y*h;
+        const prog=(sprawlT*1.2+bi*.35)%1;
+        // Client to GW
+        clients.forEach(cl=>{
+          const p2=(sprawlT*1.5+bi*.2+clients.indexOf(cl)*.3)%1;
+          ctx.strokeStyle=blue()+'33';ctx.lineWidth=1;ctx.setLineDash([]);
+          ctx.beginPath();ctx.moveTo(70,cl.y*h);ctx.lineTo(gx-gw2/2,h*.5);ctx.stroke();
+          if(p2<.5){
+            const dp=p2/.5;
+            const px=70+(gx-gw2/2-70)*dp,py=cl.y*h+(h*.5-cl.y*h)*dp;
+            ctx.fillStyle=blue();ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+          }
+        });
+        ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'88';ctx.lineWidth=1;
+        ctx.beginPath();ctx.roundRect(w-80,by-14,70,28,4);ctx.fill();ctx.stroke();
+        ctx.fillStyle=green();ctx.font='7px Space Mono';ctx.textAlign='center';
+        ctx.fillText(bk.l,w-45,by+4);
+        // GW to backend
+        ctx.strokeStyle=cyan()+'44';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(gx+gw2/2,h*.5);ctx.lineTo(w-80,by);ctx.stroke();
+        const dp2=prog;
+        const ppx=gx+gw2/2+(w-80-gx-gw2/2)*dp2,ppy=h*.5+(by-h*.5)*dp2;
+        ctx.fillStyle=cyan();ctx.beginPath();ctx.arc(ppx,ppy,3,0,Math.PI*2);ctx.fill();
+      });
+      ctx.fillStyle=green();ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+      ctx.fillText('GOVERNED · SECURED · OBSERVABLE',w/2,h-14);
+    }
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C1: GATEWAY ──
+let gwT=0;
+function drawGw(){
+  const s=setupCanvas('c-gw',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    gwT+=.008;ctx.clearRect(0,0,w,h);
+    const cx=w/2;
+    // APIM block (centre)
+    ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue();ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(cx-45,h*.35,90,h*.3,8);ctx.fill();ctx.stroke();
+    const pulse=Math.sin(gwT*2)*.5+.5;
+    ctx.shadowColor=blue();ctx.shadowBlur=10*pulse;
+    ctx.strokeStyle=blue();ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(cx-45,h*.35,90,h*.3,8);ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle=blue();ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+    ctx.fillText('APIM',cx,h*.5);ctx.fillText('GATEWAY',cx,h*.5+13);
+    
+    // Clients (left)
+    ['Mobile','Web','Partner'].forEach((l,i)=>{
+      const cy=h*(.2+i*.25);
+      ctx.fillStyle=cyan()+'22';ctx.strokeStyle=cyan()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(14,cy-13,60,26,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=cyan();ctx.font='8px Space Mono';ctx.textAlign='center';
+      ctx.fillText(l,44,cy+4);
+      // Arrow to APIM
+      const prog=(gwT+i*.3)%1;
+      if(prog<.5){
+        const p=prog/.5;
+        const px=74+(cx-45-74)*p,py=cy+(h*.5-cy)*p;
+        ctx.fillStyle=cyan();ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+      }
+      ctx.strokeStyle=cyan()+'33';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(74,cy);ctx.lineTo(cx-45,h*.5);ctx.stroke();
+    });
+    
+    // Backends (right)
+    ['Orders API','Users API','Legacy'].forEach((l,i)=>{
+      const by=h*(.2+i*.25);
+      ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(w-74,by-13,60,26,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=green();ctx.font='8px Space Mono';ctx.textAlign='center';
+      ctx.fillText(l,w-44,by+4);
+      const prog2=(gwT+i*.35+.5)%1;
+      if(prog2<.5){
+        const p=prog2/.5;
+        const px=cx+45+(w-74-cx-45)*p,py=h*.5+(by-h*.5)*p;
+        ctx.fillStyle=green();ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+      }
+      ctx.strokeStyle=green()+'33';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(cx+45,h*.5);ctx.lineTo(w-74,by);ctx.stroke();
+    });
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Gateway governs access — backends unchanged',cx,h-16);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C2: POLICY ──
+let polT=0;
+function drawPolicy(){
+  const s=setupCanvas('c-policy',360);if(!s)return;
+  const{ctx,w,h}=s;
+  const phases=[
+    {l:'INBOUND',c:blue,desc:'Auth · Rate Limit · Transform'},
+    {l:'BACKEND',c:cyan,desc:'Forward · Retry · Timeout'},
+    {l:'OUTBOUND',c:green,desc:'Response Transform · Cache'},
+    {l:'ON-ERROR',c:()=>col('red'),desc:'Error Response · Log'},
+  ];
+  function frame(){
+    polT+=.007;ctx.clearRect(0,0,w,h);
+    const cx=w/2,startX=40,endX=w-40,midY=h/2;
+    
+    // Tunnel
+    ctx.fillStyle=surf()+'88';ctx.strokeStyle=bord();ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(startX,midY-50,endX-startX,100,8);ctx.fill();ctx.stroke();
+    
+    // Phase zones
+    const zoneW=(endX-startX)/4;
+    phases.forEach((ph,i)=>{
+      const zx=startX+i*zoneW;
+      ctx.fillStyle=ph.c()+'18';ctx.strokeStyle=ph.c()+'44';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(zx+2,midY-48,zoneW-4,96,0);ctx.fill();
+      ctx.strokeStyle=ph.c()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(zx+zoneW,midY-50);ctx.lineTo(zx+zoneW,midY+50);ctx.stroke();
+      ctx.fillStyle=ph.c();ctx.font='bold 8px Space Mono';ctx.textAlign='center';
+      ctx.fillText(ph.l,zx+zoneW/2,midY-30);
+      ctx.fillStyle=tx();ctx.font='7px DM Sans';
+      ctx.fillText(ph.desc,zx+zoneW/2,midY+38);
+    });
+    
+    // Animated request packet
+    const prog=(polT*.5)%1;
+    const rx=startX+(endX-startX)*prog;
+    const col2=prog<.25?blue():prog<.5?cyan():prog<.75?green():red();
+    ctx.fillStyle=col2+'33';ctx.strokeStyle=col2;ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(rx-18,midY-12,36,24,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle=col2;ctx.font='7px Space Mono';ctx.textAlign='center';
+    ctx.fillText('REQ',rx,midY+4);
+    
+    // Glow on current zone
+    const zi=Math.floor(prog*4);
+    if(phases[zi]){
+      ctx.shadowColor=phases[zi].c();ctx.shadowBlur=15;
+      ctx.strokeStyle=phases[zi].c();ctx.lineWidth=2;
+      const zx=startX+zi*zoneW;
+      ctx.beginPath();ctx.roundRect(zx+2,midY-48,zoneW-4,96,0);ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+    
+    // Entry/exit labels
+    ctx.fillStyle=blue();ctx.font='8px Space Mono';ctx.textAlign='left';
+    ctx.fillText('→ REQUEST',startX,midY-56);
+    ctx.textAlign='right';
+    ctx.fillStyle=green();
+    ctx.fillText('RESPONSE →',endX,midY-56);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C3: SECURITY ──
+let secT=0;
+function drawSec(){
+  const s=setupCanvas('c-sec',360);if(!s)return;
+  const{ctx,w,h}=s;
+  const gates=[
+    {l:'IP\nALLOWLIST',c:cyan,pass:true},
+    {l:'SUBSCRIPTION\nKEY',c:blue,pass:true},
+    {l:'JWT\nVALIDATE',c:violet,pass:true},
+    {l:'OAUTH\nSCOPE',c:green,pass:true},
+    {l:'RATE\nLIMIT',c:amber,pass:false},
+  ];
+  function frame(){
+    secT+=.007;ctx.clearRect(0,0,w,h);
+    const cx=w/2,gy=h/2;
+    // Request source
+    const rx=30;
+    ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue()+'66';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(rx,gy-14,50,28,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle=blue();ctx.font='7px Space Mono';ctx.textAlign='center';
+    ctx.fillText('CLIENT',rx+25,gy+4);
+    
+    const gateW=w*.7/gates.length;
+    const gateStartX=w*.2;
+    
+    gates.forEach((g,i)=>{
+      const gx=gateStartX+i*gateW+gateW/2;
+      const prog=(secT+i*.18)%1;
+      const active=prog<.3;
+      const col2=g.c();
+      
+      // Gate pillar
+      ctx.fillStyle=col2+'22';ctx.strokeStyle=active?(col2):(col2+'44');ctx.lineWidth=active?2:1;
+      ctx.beginPath();ctx.roundRect(gx-14,gy-40,28,80,4);ctx.fill();ctx.stroke();
+      
+      if(active){ctx.shadowColor=col2;ctx.shadowBlur=12;}
+      ctx.fillStyle=col2;ctx.font='7px Space Mono';ctx.textAlign='center';
+      const ls=g.l.split('\n');
+      ls.forEach((l2,li)=>ctx.fillText(l2,gx,gy-22+li*10));
+      ctx.shadowBlur=0;
+      
+      // Check / X
+      if(!g.pass&&active){
+        ctx.fillStyle=red();ctx.font='bold 14px Inter';ctx.textAlign='center';
+        ctx.fillText('✗',gx,gy+20);
+      } else if(active){
+        ctx.fillStyle=green();ctx.font='bold 14px Inter';
+        ctx.fillText('✓',gx,gy+20);
+      }
+      
+      // Connecting line
+      if(i<gates.length-1){
+        ctx.strokeStyle=col2+'33';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(gx+14,gy);ctx.lineTo(gx+gateW,gy);ctx.stroke();
+        // Packet
+        if(prog<.7){
+          const px=gx+14+prog/0.7*(gateW-14);
+          ctx.fillStyle=col2;ctx.beginPath();ctx.arc(px,gy,3,0,Math.PI*2);ctx.fill();
+        }
+      }
+      
+      // From client to first gate
+      if(i===0){
+        ctx.strokeStyle=blue()+'44';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(rx+50,gy);ctx.lineTo(gx-14,gy);ctx.stroke();
+      }
+    });
+    
+    // Backend (right)
+    const lastGate=gateStartX+gates.length*gateW;
+    ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'66';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(w-60,gy-14,50,28,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle=green();ctx.font='7px Space Mono';ctx.textAlign='center';
+    ctx.fillText('BACKEND',w-35,gy+4);
+    
+    ctx.fillStyle=amber();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Request blocked at rate limit — backend never reached',cx,h-16);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C4: THROTTLE ──
+let thrT=0;
+function drawThrottle(){
+  const s=setupCanvas('c-throttle',360);if(!s)return;
+  const{ctx,w,h}=s;
+  const trafficBuf=[];
+  function frame(){
+    thrT+=.012;ctx.clearRect(0,0,w,h);
+    
+    // Incoming spike
+    const spike=Math.max(0,Math.sin(thrT*.8)*.8+Math.sin(thrT*2.1)*.3+.2);
+    const inRate=spike;
+    
+    // Draw traffic "bars" flowing left to right
+    // Pre-gateway zone
+    const apimX=w*.45;
+    ctx.fillStyle=tx();ctx.font='9px Space Mono';ctx.textAlign='center';
+    ctx.fillText('CLIENT TRAFFIC',w*.2,22);
+    ctx.fillText('APIM GATEWAY',apimX,22);
+    ctx.fillText('BACKEND',w*.75,22);
+    
+    // Animated traffic wave (client side)
+    for(let i=0;i<30;i++){
+      const t=(thrT*2+i*.1)%1;
+      const h2=spike*80+20;
+      const bx=w*.04+i*(apimX-w*.06)/30;
+      const by=h*.55-h2/2;
+      ctx.fillStyle=amber()+(spike>.6?'cc':'66');
+      ctx.fillRect(bx,by,8,h2);
+    }
+    
+    // APIM block
+    ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue();ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(apimX-24,h*.25,48,h*.5,8);ctx.fill();ctx.stroke();
+    ctx.fillStyle=blue();ctx.font='bold 8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('APIM',apimX,h*.48);ctx.fillText('429',apimX,h*.56);
+    
+    // Throttled traffic (rejected — bounce back)
+    if(spike>.5){
+      const rej=spike-.5;
+      for(let i=0;i<15;i++){
+        const t2=(thrT*3+i*.15)%1;
+        const bx=w*.04+i*(apimX-w*.06)/15+t2*(apimX*-.6);
+        const by=h*.3+i*8;
+        ctx.fillStyle=red()+'99';
+        ctx.beginPath();ctx.arc(bx,by,4,0,Math.PI*2);ctx.fill();
+      }
+      ctx.fillStyle=red();ctx.font='9px Space Mono';ctx.textAlign='center';
+      ctx.fillText('429 TOO MANY REQUESTS',apimX,h*.22);
+    }
+    
+    // Smooth output (right of APIM)
+    for(let i=0;i<20;i++){
+      const bx=apimX+30+i*(w*.28)/20;
+      const smoothH=40; // flat
+      const by=h*.55-smoothH/2;
+      ctx.fillStyle=green()+'99';
+      ctx.fillRect(bx,by,7,smoothH);
+    }
+    ctx.fillStyle=green();ctx.font='9px Space Mono';ctx.textAlign='center';
+    ctx.fillText('SMOOTH LOAD',w*.75,h*.75);
+    
+    // Spike label
+    if(spike>.6){
+      ctx.fillStyle=amber();ctx.font='bold 10px Space Mono';ctx.textAlign='center';
+      ctx.fillText(`SPIKE: ${Math.round(spike*100)}%`,w*.2,h*.8);
+    }
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C5: TRANSFORM ──
+let trnT=0;
+function drawTransformC(){
+  const s=setupCanvas('c-transform',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    trnT+=.007;ctx.clearRect(0,0,w,h);
+    const cx=w/2,cy2=h/2;
+    
+    // Input (left)
+    ctx.fillStyle=amber()+'22';ctx.strokeStyle=amber()+'88';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(10,cy2-70,100,140,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=amber();ctx.font='bold 8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('SOAP/XML',60,cy2-50);
+    const soapLines=['<Request>','  <auth>','    key123','  </auth>','  <op>Get</op>','</Request>'];
+    soapLines.forEach((l,i)=>{
+      ctx.fillStyle=tx();ctx.font='7px Space Mono';ctx.textAlign='left';
+      ctx.fillText(l,16,cy2-30+i*13);
+    });
+    
+    // Transform pipeline (centre)
+    const stages=[
+      {l:'HEADER\nREWRITE',c:blue},
+      {l:'PAYLOAD\nTRANSFORM',c:violet},
+      {l:'PROTO\nTRANSLATE',c:cyan},
+    ];
+    const stW=70,stGap=10,totalW=(stW+stGap)*3-stGap;
+    const stStartX=cx-totalW/2;
+    stages.forEach((st,i)=>{
+      const sx=stStartX+i*(stW+stGap);
+      const active=Math.sin(trnT*3-i*.8)>.2;
+      ctx.fillStyle=st.c()+'22';ctx.strokeStyle=active?st.c():st.c()+'44';ctx.lineWidth=active?2:1;
+      ctx.beginPath();ctx.roundRect(sx,cy2-22,stW,44,6);ctx.fill();ctx.stroke();
+      if(active){ctx.shadowColor=st.c();ctx.shadowBlur=10;}
+      ctx.fillStyle=st.c();ctx.font='7px Space Mono';ctx.textAlign='center';
+      const ls=st.l.split('\n');
+      ls.forEach((l2,li)=>ctx.fillText(l2,sx+stW/2,cy2-8+li*13));
+      ctx.shadowBlur=0;
+      if(i<stages.length-1){
+        ctx.strokeStyle=bord();ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(sx+stW,cy2);ctx.lineTo(sx+stW+stGap,cy2);ctx.stroke();
+        const p=(trnT+i*.3)%1;
+        const px=sx+stW+p*stGap;
+        ctx.fillStyle=st.c();ctx.beginPath();ctx.arc(px,cy2,3,0,Math.PI*2);ctx.fill();
+      }
+    });
+    
+    // Arrows
+    ctx.strokeStyle=amber()+'66';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(110,cy2);ctx.lineTo(stStartX,cy2);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle=green()+'66';ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(stStartX+totalW,cy2);ctx.lineTo(w-110,cy2);ctx.stroke();ctx.setLineDash([]);
+    
+    // Output (right) — JSON
+    ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'88';ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(w-110,cy2-70,100,140,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=green();ctx.font='bold 8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('REST/JSON',w-60,cy2-50);
+    const jsonLines=['{','  "auth":','    "Bearer ...",','  "action":','    "Get"','}'];
+    jsonLines.forEach((l,i)=>{
+      ctx.fillStyle=tx();ctx.font='7px Space Mono';ctx.textAlign='left';
+      ctx.fillText(l,w-106,cy2-30+i*13);
+    });
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Client sees JSON · backend still receives SOAP',cx,h-16);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C6: VERSION ──
+let verT=0;
+function drawVersion(){
+  const s=setupCanvas('c-version',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    verT+=.008;ctx.clearRect(0,0,w,h);
+    const cx=w/2;
+    // Router (left)
+    ctx.fillStyle=blue()+'22';ctx.strokeStyle=blue();ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(20,h*.4,70,h*.2,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=blue();ctx.font='8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('VERSION',55,h*.5);ctx.fillText('ROUTER',55,h*.5+12);
+    
+    // v1 track
+    const v1y=h*.28,v2y=h*.62,v3y=h*.45;
+    [
+      {y:v1y,l:'v1',c:cyan,desc:'/v1/orders',isOld:true},
+      {y:v2y,l:'v2',c:blue,desc:'/v2/orders'},
+    ].forEach((v,i)=>{
+      const prog=(verT+i*.4)%1;
+      const vx=cx-20,vw=100;
+      ctx.fillStyle=v.c()+'22';ctx.strokeStyle=v.isOld?v.c()+'44':v.c();
+      ctx.lineWidth=v.isOld?1:1.5;
+      ctx.setLineDash(v.isOld?[4,3]:[]);
+      ctx.beginPath();ctx.roundRect(vx,v.y-16,vw,32,6);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=v.isOld?v.c()+'88':v.c();ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+      ctx.fillText(v.l,vx+vw/2,v.y+4);
+      ctx.fillStyle=tx();ctx.font='7px DM Sans';
+      ctx.fillText(v.desc,vx+vw/2,v.y+15);
+      // Line from router
+      ctx.strokeStyle=v.c()+(v.isOld?'44':'88');ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(90,h*.5);ctx.lineTo(vx,v.y);ctx.stroke();
+      // Packet
+      const px=90+(vx-90)*prog,py=h*.5+(v.y-h*.5)*prog;
+      ctx.fillStyle=v.c();ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+      
+      // Backend
+      const bx=vx+vw+20,bw2=80;
+      ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(bx,v.y-16,bw2,32,6);ctx.fill();ctx.stroke();
+      ctx.fillStyle=green();ctx.font='7px Space Mono';ctx.textAlign='center';
+      ctx.fillText('Backend '+v.l,bx+bw2/2,v.y+4);
+      ctx.strokeStyle=v.c()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(vx+vw,v.y);ctx.lineTo(bx,v.y);ctx.stroke();
+    });
+    
+    // Revision badge
+    ctx.fillStyle=violet()+'22';ctx.strokeStyle=violet();ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.roundRect(cx-20,v2y-50,100,26,4);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=violet();ctx.font='7px Space Mono';ctx.textAlign='center';
+    ctx.fillText('rev.3 (staging)',cx+30,v2y-32);
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Versions for consumers · revisions for safe rollout',cx,h-16);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C7: PRODUCTS ──
+let prodT=0;
+function drawProduct(){
+  const s=setupCanvas('c-product',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    prodT+=.007;ctx.clearRect(0,0,w,h);
+    const products=[
+      {l:'FREE TIER',limits:'100 req/min',c:()=>tx(),apis:['Auth API'],sub:'Sub key: abc...'},
+      {l:'STANDARD',limits:'1000 req/min',c:blue,apis:['Auth API','Orders','Users'],sub:'Sub key: xyz...'},
+      {l:'ENTERPRISE',limits:'10k req/min',c:cyan,apis:['All APIs + SLA'],sub:'Sub key: ent...'},
+    ];
+    const pw=(w-80)/3,ph=h*.6,py=h*.15;
+    products.forEach((p,i)=>{
+      const px=40+i*(pw+10);
+      const col2=p.c();
+      ctx.fillStyle=col2+'22';ctx.strokeStyle=col2+(i===0?'44':'');ctx.lineWidth=i===0?.8:1.5;
+      ctx.beginPath();ctx.roundRect(px,py,pw,ph,8);ctx.fill();ctx.stroke();
+      
+      if(i===1||i===2){ctx.shadowColor=col2;ctx.shadowBlur=8;}
+      ctx.fillStyle=col2;ctx.font='bold 9px Space Mono';ctx.textAlign='center';
+      ctx.fillText(p.l,px+pw/2,py+20);ctx.shadowBlur=0;
+      ctx.fillStyle=tx();ctx.font='8px DM Sans';ctx.textAlign='center';
+      ctx.fillText(p.limits,px+pw/2,py+36);
+      
+      p.apis.forEach((a,ai)=>{
+        ctx.fillStyle=col2+'22';ctx.strokeStyle=col2+'44';ctx.lineWidth=1;
+        ctx.beginPath();ctx.roundRect(px+8,py+52+ai*26,pw-16,22,4);ctx.fill();ctx.stroke();
+        ctx.fillStyle=col2;ctx.font='7px Space Mono';ctx.textAlign='center';
+        ctx.fillText(a,px+pw/2,py+67+ai*26);
+      });
+      
+      // Subscription key
+      ctx.fillStyle=amber()+'22';ctx.strokeStyle=amber()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(px+8,py+ph-38,pw-16,28,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=amber();ctx.font='7px Space Mono';ctx.textAlign='center';
+      ctx.fillText(p.sub,px+pw/2,py+ph-20);
+      
+      // Animated consumer
+      const prog=(prodT+i*.3)%1;
+      if(prog<.5){
+        const dp=prog/.5;
+        const csx=px+pw/2,csy=py-30+dp*40;
+        ctx.fillStyle=col2;ctx.beginPath();ctx.arc(csx,csy,4,0,Math.PI*2);ctx.fill();
+      }
+    });
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Same underlying APIs · different consumer contracts',w/2,h-16);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C8: NETWORKING ──
+let netT=0;
+function drawNet(){
+  const s=setupCanvas('c-net',360);if(!s)return;
+  const{ctx,w,h}=s;
+  function frame(){
+    netT+=.007;ctx.clearRect(0,0,w,h);
+    // Multi-region layout
+    const regions=[{x:.2,y:.35,l:'North Europe',col:blue},{x:.75,y:.35,l:'East US',col:cyan}];
+    // Internet clients (top)
+    ctx.fillStyle=tx();ctx.font='9px Space Mono';ctx.textAlign='center';
+    ctx.fillText('INTERNET CLIENTS',w/2,22);
+    for(let i=0;i<5;i++){
+      const cx2=w*.15+i*w*.16;
+      ctx.fillStyle=amber()+'33';ctx.beginPath();ctx.arc(cx2,40,8,0,Math.PI*2);ctx.fill();
+    }
+    // Traffic manager
+    ctx.fillStyle=violet()+'22';ctx.strokeStyle=violet();ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.roundRect(w/2-50,55,100,28,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=violet();ctx.font='8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('TRAFFIC MANAGER',w/2,73);
+    
+    regions.forEach((r,i)=>{
+      const rx=r.x*w,ry=r.y*h;
+      // VNet box
+      ctx.fillStyle=r.col()+'11';ctx.strokeStyle=r.col()+'44';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.roundRect(rx-70,ry-20,140,h*.45,8);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=r.col();ctx.font='7px Space Mono';ctx.textAlign='center';
+      ctx.fillText('VNet: '+r.l,rx,ry-6);
+      
+      // APIM inside
+      ctx.fillStyle=r.col()+'22';ctx.strokeStyle=r.col();ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.roundRect(rx-30,ry+6,60,32,6);ctx.fill();ctx.stroke();
+      ctx.fillStyle=r.col();ctx.font='7px Space Mono';ctx.textAlign='center';
+      ctx.fillText('APIM',rx,ry+22);ctx.fillText('Premium',rx,ry+32);
+      
+      // Backend
+      ctx.fillStyle=green()+'22';ctx.strokeStyle=green()+'66';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(rx-30,ry+60,60,28,4);ctx.fill();ctx.stroke();
+      ctx.fillStyle=green();ctx.font='7px Space Mono';ctx.textAlign='center';
+      ctx.fillText('Backend',rx,ry+78);
+      
+      // Arrows
+      const prog=(netT+i*.5)%1;
+      ctx.strokeStyle=r.col()+'44';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(w/2,83);ctx.lineTo(rx,ry+6);ctx.stroke();
+      const px=w/2+(rx-w/2)*prog,py=83+(ry+6-83)*prog;
+      ctx.fillStyle=r.col();ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);ctx.fill();
+      
+      ctx.strokeStyle=green()+'44';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(rx,ry+38);ctx.lineTo(rx,ry+60);ctx.stroke();
+    });
+    
+    // Sync arrow between regions
+    ctx.strokeStyle=violet()+'33';ctx.lineWidth=1;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(regions[0].x*w+70,regions[0].y*h+20);
+    ctx.lineTo(regions[1].x*w-70,regions[1].y*h+20);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=violet();ctx.font='7px Space Mono';ctx.textAlign='center';
+    ctx.fillText('config sync',w/2,regions[0].y*h+18);
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Premium: multi-region with local backend routing',w/2,h-14);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C9: OBSERVABILITY ──
+let obsT2=0;
+function drawObs2(){
+  const s=setupCanvas('c-obs',360);if(!s)return;
+  const{ctx,w,h}=s;
+  const history=new Array(60).fill(0).map((_,i)=>Math.random()*.6+.2);
+  function frame(){
+    obsT2+=.012;ctx.clearRect(0,0,w,h);
+    // Shift history
+    history.shift();history.push(Math.max(.05,Math.min(1,history[history.length-1]+(Math.random()-.5)*.2)));
+    
+    const gx=30,gy=h*.7,gw=w-60,gh=h*.5;
+    ctx.fillStyle=surf();ctx.strokeStyle=bord();ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(gx,gy-gh,gw,gh,6);ctx.fill();ctx.stroke();
+    
+    // Request rate line
+    ctx.beginPath();
+    history.forEach((v,i)=>{
+      const px=gx+i*(gw/60),py=gy-v*gh*.9;
+      if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+    });
+    ctx.strokeStyle=blue();ctx.lineWidth=2;ctx.stroke();
+    
+    // Fill under line
+    ctx.beginPath();
+    history.forEach((v,i)=>{const px=gx+i*(gw/60),py=gy-v*gh*.9;i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);});
+    ctx.lineTo(gx+gw,gy);ctx.lineTo(gx,gy);ctx.closePath();
+    ctx.fillStyle=blue()+'1a';ctx.fill();
+    
+    // Error spikes
+    history.forEach((v,i)=>{
+      if(v>.8){
+        ctx.fillStyle=red()+'88';
+        ctx.fillRect(gx+i*(gw/60)-2,gy-v*gh*.9,4,v*gh*.9);
+      }
+    });
+    
+    // Labels
+    ctx.fillStyle=blue();ctx.font='8px Space Mono';ctx.textAlign='left';
+    ctx.fillText('Requests/sec',gx+4,gy-gh+14);
+    ctx.fillStyle=red();ctx.fillText('Error spikes',gx+4,gy-gh+26);
+    
+    // Stats row
+    const stats=[
+      {l:'Req/s',v:Math.round(history[history.length-1]*850),c:blue},
+      {l:'P99 ms',v:Math.round(history[history.length-1]*240+80),c:cyan},
+      {l:'4xx',v:Math.round((1-history[history.length-1])*12)+'%',c:amber},
+      {l:'5xx',v:'0.1%',c:green},
+    ];
+    stats.forEach((st,i)=>{
+      const sx=gx+i*(gw/4)+gw/8;
+      ctx.fillStyle=surf();ctx.strokeStyle=st.c()+'44';ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(sx-35,6,70,44,6);ctx.fill();ctx.stroke();
+      ctx.fillStyle=st.c();ctx.font='bold 14px Space Mono';ctx.textAlign='center';
+      ctx.fillText(st.v,sx,30);
+      ctx.fillStyle=tx();ctx.font='7px Space Mono';
+      ctx.fillText(st.l,sx,44);
+    });
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Live request metrics — every request logged at gateway',w/2,h-10);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C10: FAILURE ──
+let failT=0;
+function drawFail(){
+  const s=setupCanvas('c-fail',360);if(!s)return;
+  const{ctx,w,h}=s;
+  const nodes=[
+    {l:'Backend\nDown',x:.5,y:.2,col:red,desc:'502 Bad Gateway'},
+    {l:'Policy\nBug',x:.2,y:.55,col:amber,desc:'500 Internal Error'},
+    {l:'Throttle\nMisconfig',x:.8,y:.55,col:amber,desc:'429 — over-blocking'},
+    {l:'Latency\nAmplify',x:.35,y:.82,col:violet,desc:'Policy adds 200ms/req'},
+    {l:'APIM\nCapacity',x:.65,y:.82,col:red,desc:'Gateway bottleneck'},
+  ];
+  function frame(){
+    failT+=.009;ctx.clearRect(0,0,w,h);
+    
+    // Centre APIM
+    const cx=w/2,cy=h*.48;
+    const pulse=Math.sin(failT*2)*.5+.5;
+    ctx.fillStyle=surf();ctx.strokeStyle=blue();ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(cx-30,cy-18,60,36,6);ctx.fill();ctx.stroke();
+    ctx.fillStyle=blue();ctx.font='bold 8px Space Mono';ctx.textAlign='center';
+    ctx.fillText('APIM',cx,cy+4);
+    
+    nodes.forEach((n,i)=>{
+      const nx=n.x*w,ny=n.y*h;
+      const active=(Math.sin(failT*1.5+i*1.2))>.3;
+      const col2=n.col();
+      
+      if(active){ctx.shadowColor=col2;ctx.shadowBlur=14;}
+      ctx.fillStyle=col2+'22';ctx.strokeStyle=col2;ctx.lineWidth=active?2:1;
+      ctx.beginPath();ctx.arc(nx,ny,28,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.shadowBlur=0;
+      
+      ctx.fillStyle=col2;ctx.font='7px Space Mono';ctx.textAlign='center';
+      const ls=n.l.split('\n');
+      ls.forEach((l2,li)=>ctx.fillText(l2,nx,ny-4+li*11));
+      
+      if(active){
+        ctx.fillStyle=col2;ctx.font='7px DM Sans';ctx.textAlign='center';
+        ctx.fillText(n.desc,nx,ny+24);
+      }
+      
+      // Line to APIM
+      ctx.strokeStyle=active?col2+88:bord();ctx.lineWidth=active?2:1;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(nx,ny);ctx.stroke();ctx.setLineDash([]);
+      
+      if(active){
+        const prog=(failT*2+i*.3)%1;
+        const px=cx+(nx-cx)*prog,py=cy+(ny-cy)*prog;
+        ctx.fillStyle=col2;ctx.beginPath();ctx.arc(px,py,3.5,0,Math.PI*2);ctx.fill();
+      }
+    });
+    
+    ctx.fillStyle=tx();ctx.font='9px DM Sans';ctx.textAlign='center';
+    ctx.fillText('Each failure mode is a single point affecting all consumers',cx,h-14);
+    requestAnimationFrame(frame);
+  }frame();
+}
+
+// ── C13: COST ──
+function drawCost(){
+  const s=setupCanvas('c-cost',360);if(!s)return;
+  const{ctx,w,h}=s;
+  ctx.clearRect(0,0,w,h);
+  const ox=70,oy=h-50,aw=w-100,ah=h-90;
+  ctx.strokeStyle=bord();ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(ox,20);ctx.lineTo(ox,oy);ctx.lineTo(ox+aw,oy);ctx.stroke();
+  ctx.save();ctx.translate(18,oy/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle=tx();ctx.font='9px Space Mono';ctx.textAlign='center';
+  ctx.fillText('MONTHLY COST ($)',0,0);ctx.restore();
+  ctx.fillStyle=tx();ctx.font='9px Space Mono';ctx.textAlign='center';
+  ctx.fillText('API CALLS / MONTH →',ox+aw/2,oy+22);
+  
+  const tiers=[
+    {l:'Consumption',base:0,perM:3.5,c:green,dash:false},
+    {l:'Developer (~$50/mo)',base:50,perM:0,c:violet,dash:true},
+    {l:'Standard (~$700/mo)',base:700,perM:0,c:blue,dash:true},
+    {l:'Premium (~$2,800/mo)',base:2800,perM:0,c:amber,dash:true},
+  ];
+  const maxCost=4000;
+  tiers.forEach(t=>{
+    ctx.beginPath();
+    ctx.setLineDash(t.dash?[5,4]:[]);
+    for(let i=0;i<=100;i++){
+      const x=ox+(i/100)*aw;
+      const calls=i*2e6;
+      const cost=Math.min(t.base+calls/1e6*t.perM,maxCost);
+      const y=oy-(cost/maxCost)*ah;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=t.c();ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);
+    const lx=ox+aw-4;
+    const ly=oy-Math.min(t.base+(200e6)/1e6*t.perM,maxCost)/maxCost*ah;
+    ctx.fillStyle=t.c();ctx.font='8px Space Mono';ctx.textAlign='right';
+    ctx.fillText(t.l,lx,ly-4);
+  });
+  
+  // Breakeven: consumption hits standard at $700 = 200M calls
+  const beX=ox+(200/200)*aw*.5;
+  ctx.strokeStyle=blue()+'88';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(beX,20);ctx.lineTo(beX,oy);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=blue();ctx.font='8px Space Mono';ctx.textAlign='center';
+  ctx.fillText('≈200M calls/mo',beX,32);ctx.fillText('Standard cheaper',beX,44);
+  
+  const yticks=[0,1000,2000,3000,4000];
+  yticks.forEach(v=>{
+    const ty=oy-(v/maxCost)*ah;
+    ctx.fillStyle=tx();ctx.font='8px Inter';ctx.textAlign='right';
+    ctx.fillText('$'+v,ox-6,ty+4);
+    ctx.strokeStyle=bord()+'44';ctx.lineWidth=.5;
+    ctx.beginPath();ctx.moveTo(ox,ty);ctx.lineTo(ox+aw,ty);ctx.stroke();
+  });
+}
+
+// ── INIT ──
+function redrawStatics(){drawCost();}
+drawSprawl();drawGw();drawPolicy();drawSec();drawThrottle();drawTransformC();
+drawVersion();drawProduct();drawNet();drawObs2();drawFail();
+redrawStatics();
+window.addEventListener('resize',()=>setTimeout(redrawStatics,100));
+</script>
+</body>
+</html>
