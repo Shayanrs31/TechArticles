@@ -1,0 +1,1589 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Azure Storage Queues — First Principles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root[data-theme="dark"] {
+  --bg: #141210;
+  --bg2: #1c1917;
+  --bg3: #252220;
+  --surface: #2a2725;
+  --border: #3d3a37;
+  --text: #e8e4df;
+  --text2: #a89f94;
+  --text3: #6b6460;
+  --accent: #f97316;
+  --accent2: #3b82f6;
+  --accent3: #10b981;
+  --accent4: #a78bfa;
+  --glow: rgba(249,115,22,0.15);
+  --glow2: rgba(59,130,246,0.15);
+  --card: #1f1d1b;
+}
+:root[data-theme="light"] {
+  --bg: #fafaf9;
+  --bg2: #f5f4f2;
+  --bg3: #eeede9;
+  --surface: #ffffff;
+  --border: #ddd9d3;
+  --text: #1c1917;
+  --text2: #57534e;
+  --text3: #a8a29e;
+  --accent: #ea580c;
+  --accent2: #2563eb;
+  --accent3: #059669;
+  --accent4: #7c3aed;
+  --glow: rgba(234,88,12,0.08);
+  --glow2: rgba(37,99,235,0.08);
+  --card: #ffffff;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  transition: background 0.4s, color 0.4s;
+}
+
+/* TOPBAR */
+#topbar {
+  position: fixed; top:0; left:0; right:0; z-index:100;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  backdrop-filter: blur(12px);
+}
+#progress-bar {
+  position: fixed; top:52px; left:0; right:0; height:2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transform-origin: left; transform: scaleX(0);
+  transition: transform 0.1s; z-index:101;
+}
+.brand { font-family: 'Space Mono', monospace; font-size:11px; color:var(--text3); letter-spacing:0.12em; text-transform:uppercase; }
+.stage-indicator { font-family: 'Space Mono', monospace; font-size:10px; color:var(--accent); letter-spacing:0.08em; }
+.theme-btn {
+  background: var(--surface); border:1px solid var(--border);
+  color:var(--text2); cursor:pointer; padding:5px 14px; border-radius:20px;
+  font-size:11px; font-family:'Space Mono',monospace; transition:all 0.2s;
+}
+.theme-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* SIDENAV */
+#sidenav {
+  position: fixed; right:20px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; gap:8px; z-index:90;
+}
+.nav-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--border); cursor:pointer; transition:all 0.3s;
+}
+.nav-dot.active { background:var(--accent); transform:scale(1.4); }
+
+/* STAGES */
+.stage {
+  min-height: 100vh; padding: 100px 0 80px;
+  display: flex; align-items: center; justify-content: center;
+}
+.stage-inner {
+  max-width: 1100px; width:100%; margin:0 auto; padding:0 40px;
+  display: grid; grid-template-columns: 1fr 1fr; gap:60px; align-items:start;
+}
+.stage-inner.full { grid-template-columns: 1fr; max-width:900px; }
+.stage-inner.tri { grid-template-columns: 1fr 1fr 1fr; gap:32px; }
+
+/* HERO */
+#hero {
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  flex-direction:column; text-align:center; padding:80px 40px;
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, var(--glow), transparent);
+}
+.hero-label {
+  font-family:'Space Mono',monospace; font-size:10px; letter-spacing:0.2em;
+  color:var(--accent); text-transform:uppercase; margin-bottom:24px;
+  border:1px solid var(--accent); padding:4px 14px; border-radius:20px;
+  display:inline-block;
+}
+.hero-title {
+  font-family:'Playfair Display', serif; font-size:clamp(42px,7vw,80px);
+  font-weight:700; line-height:1.1; margin-bottom:20px;
+  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.hero-sub {
+  font-size:17px; color:var(--text2); max-width:540px; margin:0 auto 40px;
+}
+.hero-tags { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+.tag {
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.1em;
+  padding:5px 12px; border-radius:4px; border:1px solid var(--border);
+  color:var(--text3); text-transform:uppercase;
+}
+
+/* LEFT COLUMN */
+.stage-num {
+  font-family:'Space Mono',monospace; font-size:10px; color:var(--accent);
+  letter-spacing:0.15em; text-transform:uppercase; margin-bottom:12px;
+}
+.stage-title {
+  font-family:'Playfair Display',serif; font-size:clamp(26px,3.5vw,38px);
+  font-weight:700; line-height:1.2; margin-bottom:20px;
+}
+.narrative {
+  font-size:15px; color:var(--text2); margin-bottom:28px; line-height:1.8;
+}
+.meta-cards { display:flex; flex-direction:column; gap:12px; }
+.meta-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:16px 18px;
+}
+.meta-card-label {
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.12em;
+  text-transform:uppercase; color:var(--accent); margin-bottom:6px;
+}
+.meta-card p { font-size:13px; color:var(--text2); line-height:1.6; }
+
+/* VISUAL BOX */
+.vis-box {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:14px; overflow:hidden;
+  box-shadow: 0 0 40px var(--glow);
+  position:relative;
+}
+.vis-box canvas { display:block; width:100%; }
+.vis-label {
+  font-family:'Space Mono',monospace; font-size:9px; color:var(--text3);
+  text-align:center; padding:8px; border-top:1px solid var(--border);
+  letter-spacing:0.08em; text-transform:uppercase;
+}
+
+/* SCENARIO TABS */
+.tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.tab-btn {
+  font-family:'Space Mono',monospace; font-size:10px; letter-spacing:0.08em;
+  padding:6px 14px; border-radius:20px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text3); cursor:pointer; transition:all 0.2s;
+  text-transform:uppercase;
+}
+.tab-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tab-content { display:none; }
+.tab-content.active { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.sc-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:16px;
+}
+.sc-card h4 { font-size:11px; font-family:'Space Mono',monospace; color:var(--accent2); 
+  text-transform:uppercase; letter-spacing:0.1em; margin-bottom:8px; }
+.sc-card p { font-size:12px; color:var(--text2); line-height:1.6; }
+
+/* COMPARISON TABLE */
+.comp-table { width:100%; border-collapse:collapse; font-size:12px; }
+.comp-table th {
+  font-family:'Space Mono',monospace; font-size:9px; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--text3); padding:10px 14px;
+  border-bottom:1px solid var(--border); text-align:left;
+}
+.comp-table td { padding:10px 14px; border-bottom:1px solid var(--border); color:var(--text2); vertical-align:top; }
+.comp-table tr:last-child td { border-bottom:none; }
+.comp-table tr td:first-child { font-family:'Space Mono',monospace; font-size:11px; color:var(--text); }
+.yes { color:var(--accent3); } .no { color:#ef4444; }
+.highlight-row td { background:var(--glow); }
+
+/* COST GRID */
+.cost-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.cost-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:18px; text-align:center;
+}
+.cost-card .big { font-family:'Space Mono',monospace; font-size:22px; color:var(--accent); }
+.cost-card .lbl { font-size:11px; color:var(--text3); margin-top:4px; }
+.cost-card p { font-size:12px; color:var(--text2); margin-top:8px; line-height:1.5; }
+
+/* FADE IN */
+.fade-up { opacity:0; transform:translateY(24px); transition:opacity 0.6s ease, transform 0.6s ease; }
+.fade-up.visible { opacity:1; transform:none; }
+
+/* DIVIDER */
+.stage-divider {
+  height:1px; background:var(--border); margin:0 40px;
+  opacity:0.5;
+}
+
+/* ALTERNATING BG */
+.stage:nth-child(even) { background: var(--bg2); }
+
+/* INFO BADGE */
+.info-badge {
+  display:inline-block; font-family:'Space Mono',monospace; font-size:10px;
+  padding:3px 10px; border-radius:4px; margin-right:6px; margin-bottom:6px;
+}
+.badge-orange { background:rgba(249,115,22,0.15); color:var(--accent); border:1px solid rgba(249,115,22,0.3); }
+.badge-blue { background:rgba(59,130,246,0.15); color:var(--accent2); border:1px solid rgba(59,130,246,0.3); }
+.badge-green { background:rgba(16,185,129,0.15); color:var(--accent3); border:1px solid rgba(16,185,129,0.3); }
+.badge-purple { background:rgba(167,139,250,0.15); color:var(--accent4); border:1px solid rgba(167,139,250,0.3); }
+
+@media(max-width:768px) {
+  .stage-inner { grid-template-columns:1fr; gap:36px; padding:0 20px; }
+  .stage-inner.tri { grid-template-columns:1fr; }
+  .tab-content.active { grid-template-columns:1fr; }
+  .cost-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="brand">Azure Storage Queues — First Principles</span>
+  <span class="stage-indicator" id="stage-ind">STAGE 0 / 11</span>
+  <button class="theme-btn" onclick="toggleTheme()">☀ LIGHT</button>
+</div>
+<div id="progress-bar"></div>
+
+<nav id="sidenav">
+  <div class="nav-dot active" onclick="scrollToStage(0)" title="Hero"></div>
+  <div class="nav-dot" onclick="scrollToStage(1)" title="Simplicity Illusion"></div>
+  <div class="nav-dot" onclick="scrollToStage(2)" title="Basic Model"></div>
+  <div class="nav-dot" onclick="scrollToStage(3)" title="Pull-Based"></div>
+  <div class="nav-dot" onclick="scrollToStage(4)" title="At-Least-Once"></div>
+  <div class="nav-dot" onclick="scrollToStage(5)" title="Visibility Timeout"></div>
+  <div class="nav-dot" onclick="scrollToStage(6)" title="Poison Messages"></div>
+  <div class="nav-dot" onclick="scrollToStage(7)" title="Scale"></div>
+  <div class="nav-dot" onclick="scrollToStage(8)" title="Payload Design"></div>
+  <div class="nav-dot" onclick="scrollToStage(9)" title="Ordering"></div>
+  <div class="nav-dot" onclick="scrollToStage(10)" title="When NOT"></div>
+  <div class="nav-dot" onclick="scrollToStage(11)" title="Scenarios"></div>
+  <div class="nav-dot" onclick="scrollToStage(12)" title="Cost"></div>
+</nav>
+
+<!-- HERO -->
+<section id="stage-0" class="stage" style="background:var(--bg); min-height:100vh; display:flex; align-items:center; justify-content:center;">
+<div id="hero">
+  <div class="hero-label">12 Stages · Failure-First · Architect Level</div>
+  <h1 class="hero-title">Azure Storage Queues</h1>
+  <p class="hero-sub">A durable, pull-based message shelf. Brutally simple. Deceptively powerful when you understand what you're giving up.</p>
+  <div class="hero-tags">
+    <span class="tag">Visibility Timeout</span>
+    <span class="tag">At-Least-Once</span>
+    <span class="tag">Poison Messages</span>
+    <span class="tag">Pull Model</span>
+    <span class="tag">64 KB Limit</span>
+    <span class="tag">No FIFO Guarantee</span>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 0: Simplicity Illusion -->
+<section id="stage-1" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 0 — The Simplicity Illusion</div>
+    <h2 class="stage-title">Simple ≠ Trivial</h2>
+    <p class="narrative">Azure Storage Queues look like a toy: write a message, read a message. But under that surface sits durable HTTP-accessible storage with geo-redundancy, eventual consistency, and failure semantics that will break naïve consumers. The simplicity is the interface. The complexity is in what happens when things go wrong.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Teams treat it as an in-memory queue and skip idempotency. First production outage teaches them otherwise — at 2 AM.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"It's just a queue — I'll add retry logic later." The delivery model means you already have retry. You need idempotency on day one.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> near-zero ops burden, HTTP access, massive durability at low cost.<br><strong style="color:#ef4444">Sacrifice:</strong> ordering, transactions, built-in dead-lettering.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-illusion" height="320"></canvas>
+      <div class="vis-label">Storage Queues Infrastructure Primitive</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 1: Basic Queue Mental Model -->
+<section id="stage-2" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 1 — The Basic Queue Mental Model</div>
+    <h2 class="stage-title">The Shelf with a Cover</h2>
+    <p class="narrative">A producer places a message on a shelf. A consumer reaches up, takes the message, and covers it — making it invisible to other consumers — for a defined window. If the consumer finishes and deletes it, it's gone. If the consumer crashes, the cover lifts and the message reappears for another consumer to pick up.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>The "invisible" state is not "deleted." Treating invisibility as delivery confirmation causes silent data loss when crashes occur before explicit deletion.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"If my consumer received it, it's been consumed." No — it returns to the queue if you don't delete it within the visibility timeout.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> crash-safe processing — failures auto-recover.<br><strong style="color:#ef4444">Sacrifice:</strong> complexity; you must track two operations: process AND delete.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-shelf" height="340"></canvas>
+      <div class="vis-label">Producer → Invisible → Deleted (or returned)</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 2: Pull-Based Processing -->
+<section id="stage-3" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 2 — Pull-Based Processing</div>
+    <h2 class="stage-title">The Consumer Must Ask</h2>
+    <p class="narrative">Storage Queues don't push. The queue sits passive, waiting. Every message received costs a consumer a deliberate HTTP GET to Azure — polling. That polling has latency implications, cost implications, and a fundamental design decision: how often do you ask, and what happens between asks?</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Poll too frequently: unnecessary cost and API load. Poll too infrequently: processing latency spikes. Long-polling (up to 20s wait) is the correct default.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"Pull is worse than push." For decoupled processing, pull is safer — the consumer controls its own throughput. Push can overwhelm downstream services.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> consumer controls pace, back-pressure is natural.<br><strong style="color:#ef4444">Sacrifice:</strong> ~2–5s latency floor even with long-polling. Not suitable for sub-second requirements.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-pull" height="340"></canvas>
+      <div class="vis-label">Pull vs Push delivery model</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 3: At-Least-Once -->
+<section id="stage-4" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 3 — At-Least-Once Delivery</div>
+    <h2 class="stage-title">Your Consumer Will See It Twice</h2>
+    <p class="narrative">Storage Queues guarantee that a message will be delivered — but not exactly once. A consumer can crash between receiving the message and deleting it. The message reappears. Another consumer picks it up. Your system has now processed the same event twice. This is not a bug. This is the contract.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Without idempotency, duplicate processing creates double-charges, duplicate emails, corrupted counts. Design every consumer to be idempotent from the start.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"I'll handle duplicates in a later iteration." Every iteration is a later iteration until production catches fire. Build idempotency into the first version.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> guaranteed delivery — messages are never silently dropped.<br><strong style="color:#ef4444">Sacrifice:</strong> exactly-once semantics require external coordination (idempotency keys, DB checks).</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-atleastonce" height="340"></canvas>
+      <div class="vis-label">Crash before delete → message reappears</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 4: Visibility Timeout -->
+<section id="stage-5" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 4 — Visibility Timeout</div>
+    <h2 class="stage-title">The Loan with an Expiry</h2>
+    <p class="narrative">When a consumer dequeues a message, it borrows that message for a fixed window — the visibility timeout. Default is 30 seconds. Maximum is 7 days. If the consumer doesn't delete the message within that window, the queue considers the loan expired and makes the message visible again. Your code must either finish and delete, or extend the lease.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Under-tuned timeouts cause phantom parallelism: multiple workers processing the same message simultaneously, each believing they hold the exclusive lock.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"30 seconds is plenty." If your processing involves slow external APIs, blob uploads, or retry loops, 30 seconds evaporates. Set timeout to 2× your p99 processing time.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> automatic crash recovery without a separate heartbeat system.<br><strong style="color:#ef4444">Sacrifice:</strong> requires accurate latency estimation; wrong timeout causes duplicate work.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-vistimeout" height="340"></canvas>
+      <div class="vis-label">Visibility timeout window and expiry behaviour</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 5: Poison Messages -->
+<section id="stage-6" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 5 — Poison Messages</div>
+    <h2 class="stage-title">The Message That Kills Workers</h2>
+    <p class="narrative">Some messages are structurally broken — malformed JSON, references to deleted resources, invalid IDs. Every consumer that picks it up processes it, fails, returns it to the queue, and the cycle repeats. Without detection, a single poison message can saturate your consumer pool with infinite retry loops, starving healthy messages.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>A queue full of retrying poison messages blocks all other processing. The entire system stalls behind one bad record. Production incidents often trace back here.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"Storage Queues have a dead-letter queue." They don't. Unlike Service Bus, there is no built-in DLQ. You must implement the poison message pattern yourself using dequeueCount.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> full control over poison message routing logic.<br><strong style="color:#ef4444">Sacrifice:</strong> you must build it. Azure Functions SDK has a convention (5 retries → separate poison queue), but raw SDK does not.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-poison" height="340"></canvas>
+      <div class="vis-label">Dequeue count accumulation and poison queue routing</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 6: Scale and Throughput -->
+<section id="stage-7" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 6 — Scale and Throughput</div>
+    <h2 class="stage-title">The Queue Absorbs the Burst</h2>
+    <p class="narrative">Storage Queues scale transparently — Azure partitions them behind the scenes across storage nodes. A single queue can handle thousands of messages per second. The constraint is not the queue — it's your consumers. The queue becomes a shock absorber between spiky producers and steady consumers, flattening load spikes that would otherwise tear downstream systems apart.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Scaling consumers horizontally is safe — multiple workers polling the same queue are coordinated by visibility timeout. No consumer coordination logic needed.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"I need to partition messages across multiple queues for scale." For most workloads, a single Storage Queue is sufficient. Multiple queues make sense for priority lanes, not raw throughput.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> effortless burst absorption — queue depth grows, consumers catch up.<br><strong style="color:#ef4444">Sacrifice:</strong> queue depth is not a free metric — large backlogs mean growing processing lag. Monitor age of oldest message, not just count.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-scale" height="340"></canvas>
+      <div class="vis-label">Burst absorption and consumer throughput</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 7: Message Size and Payload -->
+<section id="stage-8" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 7 — Message Size and Payload Design</div>
+    <h2 class="stage-title">Send the Address, Not the Package</h2>
+    <p class="narrative">Storage Queue messages are capped at 64 KB. That's enough for a well-structured JSON envelope — an event type, correlation ID, a timestamp, and a pointer to actual data. What it's not enough for is raw payload data. Large payloads belong in Blob Storage. The queue message is the notification that the payload exists, not the payload itself.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Cramming serialised objects into queue messages creates brittle, bloated messages that approach the limit and break under schema evolution. The pointer pattern is universally more maintainable.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"64 KB is plenty for my JSON." Until your JSON includes a nested list, a base64 thumbnail, or a user's full profile history. Design for what the message should be: a signal, not a record.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> lightweight messaging, fast polling, low queue storage cost.<br><strong style="color:#ef4444">Sacrifice:</strong> consumers need Blob access. Pointer pattern introduces dependency on storage availability.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-payload" height="340"></canvas>
+      <div class="vis-label">Message pointer pattern — signal vs data</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 8: Ordering -->
+<section id="stage-9" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 8 — Ordering Expectations</div>
+    <h2 class="stage-title">The Queue Will Shuffle</h2>
+    <p class="narrative">Storage Queues make a best-effort attempt at FIFO ordering. Under scale — multiple partitions, concurrent consumers, visibility timeout redeliveries — messages will be dequeued out of insertion order. If your business logic depends on message sequence, you are building on an assumption the queue does not provide.</p>
+    <div class="meta-cards">
+      <div class="meta-card">
+        <div class="meta-card-label">Why It Matters</div>
+        <p>Order-dependent workflows — payment state machines, document version chains — will silently corrupt state if message B arrives before message A and your consumer doesn't detect it.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Common Misconception</div>
+        <p>"It's mostly FIFO in practice." In low-throughput single-consumer scenarios, yes. In production under load with retries and multiple consumers, no — this assumption fails unpredictably.</p>
+      </div>
+      <div class="meta-card">
+        <div class="meta-card-label">Tradeoff Lens</div>
+        <p><strong style="color:var(--accent3)">Gain:</strong> massive throughput without ordering overhead.<br><strong style="color:#ef4444">Sacrifice:</strong> ordered processing requires sessions (use Service Bus) or sequence numbers in payload with consumer-side sorting logic.</p>
+      </div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-ordering" height="340"></canvas>
+      <div class="vis-label">Ordering drift under concurrent consumers</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 9: When NOT to Use -->
+<section id="stage-10" class="stage fade-up">
+<div class="stage-inner full">
+  <div>
+    <div class="stage-num">Stage 9 — When NOT to Use Storage Queues</div>
+    <h2 class="stage-title">The Honest Comparison</h2>
+    <p class="narrative" style="max-width:680px">Every feature Storage Queues lacks is a feature Service Bus, Event Hubs, or Event Grid provides for a reason. Choosing the simpler tool is correct when you don't need those features — and wrong when you quietly depend on them.</p>
+    <br>
+    <table class="comp-table" style="background:var(--card); border-radius:12px; overflow:hidden; border:1px solid var(--border);">
+      <thead>
+        <tr>
+          <th>Capability</th>
+          <th>Storage Queues</th>
+          <th>Service Bus</th>
+          <th>Event Hubs</th>
+          <th>Event Grid</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="highlight-row">
+          <td>Dead-Letter Queue</td>
+          <td class="no">Manual pattern</td>
+          <td class="yes">Built-in</td>
+          <td class="no">—</td>
+          <td class="no">—</td>
+        </tr>
+        <tr>
+          <td>Transactions</td>
+          <td class="no">No</td>
+          <td class="yes">Yes</td>
+          <td class="no">No</td>
+          <td class="no">No</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>Message Sessions</td>
+          <td class="no">No</td>
+          <td class="yes">Yes (FIFO per group)</td>
+          <td class="no">No</td>
+          <td class="no">No</td>
+        </tr>
+        <tr>
+          <td>Topics / Fan-out</td>
+          <td class="no">No</td>
+          <td class="yes">Yes</td>
+          <td class="no">No</td>
+          <td class="yes">Yes</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>Message Replay</td>
+          <td class="no">No</td>
+          <td class="no">No</td>
+          <td class="yes">Yes (retention)</td>
+          <td class="no">No</td>
+        </tr>
+        <tr>
+          <td>Push delivery</td>
+          <td class="no">No</td>
+          <td class="no">No</td>
+          <td class="no">No</td>
+          <td class="yes">Yes</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>Max message size</td>
+          <td>64 KB</td>
+          <td>256 KB (1 MB Premium)</td>
+          <td>1 MB</td>
+          <td>1 MB</td>
+        </tr>
+        <tr>
+          <td>Max queue depth</td>
+          <td>500 TB</td>
+          <td>80 GB</td>
+          <td>Retention-based</td>
+          <td>Not applicable</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>Cost model</td>
+          <td class="yes">Cheapest</td>
+          <td>Per operation + namespace</td>
+          <td>Throughput units</td>
+          <td>Per operation</td>
+        </tr>
+      </tbody>
+    </table>
+    <br>
+    <p style="font-size:13px; color:var(--text2); max-width:680px"><strong style="color:var(--accent)">The rule:</strong> Use Storage Queues when you need durable, decoupled async processing without ordering, sessions, or fan-out. The moment you need any of those features, pay for Service Bus — attempting to recreate them on Storage Queues is a maintenance burden that never ends cleanly.</p>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 10: Real World Scenarios -->
+<section id="stage-11" class="stage fade-up">
+<div class="stage-inner full">
+  <div>
+    <div class="stage-num">Stage 10 — Real World Architect Scenarios</div>
+    <h2 class="stage-title">Where Storage Queues Belong</h2>
+    <p class="narrative" style="max-width:680px">Storage Queues fit systems where the work is naturally idempotent, the payload is compact or pointer-based, throughput matters more than ordering, and operational simplicity reduces risk. Here are four canonical patterns.</p>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="showTab('s-images')">Image Processing</button>
+      <button class="tab-btn" onclick="showTab('s-thumb')">Thumbnail Generation</button>
+      <button class="tab-btn" onclick="showTab('s-email')">Async Email</button>
+      <button class="tab-btn" onclick="showTab('s-batch')">Batch Ingestion</button>
+    </div>
+    <div id="s-images" class="tab-content active">
+      <div class="sc-card"><h4>Why Storage Queue Fits</h4><p>Image upload events are naturally idempotent: reprocessing the same blob produces the same output. The queue absorbs upload bursts from web tiers while GPU workers process at their own pace.</p></div>
+      <div class="sc-card"><h4>Failure Model</h4><p>Worker crashes mid-resize → message reappears → another worker picks it up → same output overwrites partial result. Safe by design. Monitor dequeue count to detect corrupt images entering poison loop.</p></div>
+      <div class="sc-card"><h4>Scaling Implications</h4><p>Add consumer instances horizontally. Each worker polls independently. No coordination needed. Scale by monitoring queue depth and age of oldest message — not CPU utilisation alone.</p></div>
+      <div class="sc-card"><h4>Idempotency Strategy</h4><p>Name output blobs after input blob hash. Second processing of same message overwrites identical output. Consumer is naturally idempotent without any state tracking.</p></div>
+    </div>
+    <div id="s-thumb" class="tab-content">
+      <div class="sc-card"><h4>Why Storage Queue Fits</h4><p>Thumbnail generation is CPU-intensive but stateless. The pointer pattern (message = blob URL + dimensions spec) keeps messages well under 64 KB. Output is deterministic.</p></div>
+      <div class="sc-card"><h4>Failure Model</h4><p>Set visibility timeout to 3× the p99 generation time. If generation exceeds timeout, two workers may generate simultaneously — but the last writer wins and both outputs are identical.</p></div>
+      <div class="sc-card"><h4>Scaling Implications</h4><p>Fan-out across multiple queue workers is safe. Consider separate queues for priority tiers (avatars = fast lane, archive thumbnails = slow lane) to prevent low-priority jobs crowding high-priority ones.</p></div>
+      <div class="sc-card"><h4>Idempotency Strategy</h4><p>Write thumbnail to a deterministic path: /thumbnails/{blobId}/{width}x{height}.jpg. Reprocessing overwrites identical bytes. Check-exist-before-write is a premature optimisation here.</p></div>
+    </div>
+    <div id="s-email" class="tab-content">
+      <div class="sc-card"><h4>Why Storage Queue Fits</h4><p>Email send requests are discrete, idempotent when email provider deduplicates by idempotency key, and low-throughput. Queue decouples slow SMTP operations from user-facing request paths.</p></div>
+      <div class="sc-card"><h4>Failure Model</h4><p>The critical failure mode: duplicate sends. If you delete the message before confirming delivery, a crash causes silent loss. If you confirm delivery before deleting, a crash causes duplicate send. Use SendGrid/SES idempotency keys to make both paths safe.</p></div>
+      <div class="sc-card"><h4>Scaling Implications</h4><p>Email volume is rarely the constraint — provider rate limits are. Use a single consumer respecting provider throttling rather than horizontal scaling. Queue becomes the rate buffer, not a throughput engine.</p></div>
+      <div class="sc-card"><h4>Idempotency Strategy</h4><p>Generate an idempotency key (SHA of: to + subject + templateId + correlationId). Pass to email provider. Second send attempt returns 200 without a second delivery. Track sent IDs in Table Storage if provider doesn't support this.</p></div>
+    </div>
+    <div id="s-batch" class="tab-content">
+      <div class="sc-card"><h4>Why Storage Queue Fits</h4><p>Data files land in Blob, trigger a queue message (pointer to blob path). Consumer batch-ingests into data store. Queue smooths out file arrival spikes against constant ingestion throughput.</p></div>
+      <div class="sc-card"><h4>Failure Model</h4><p>Worker fails mid-ingest → message reappears → re-ingestion begins. Without idempotency, partial data + reinserted data = corrupted records. Upsert semantics (not insert) are essential.</p></div>
+      <div class="sc-card"><h4>Scaling Implications</h4><p>Batches vary in size: 1 KB CSV to 500 MB Parquet. Set visibility timeout based on maximum expected file size divided by network throughput, with 50% headroom. Dynamic timeout extension via UpdateMessage API is an option for unpredictably large files.</p></div>
+      <div class="sc-card"><h4>Idempotency Strategy</h4><p>Use blob ETag or content hash as batch run ID. Record processed batches in a tracking table. On requeue, check if batch ID already completed. Skip if done. Full idempotency with O(1) lookup cost.</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- STAGE 11: Cost and Operational Model -->
+<section id="stage-12" class="stage fade-up">
+<div class="stage-inner">
+  <div class="left">
+    <div class="stage-num">Stage 11 — Cost and Operational Model</div>
+    <h2 class="stage-title">Pay Almost Nothing. Own Everything.</h2>
+    <p class="narrative">Storage Queues are priced on storage consumed and operation count — not on provisioned capacity. There is no queue namespace to configure, no SKU to select, no throughput unit to pre-purchase. This makes cost linear with actual usage, and operational overhead close to zero. What you save in platform cost, you spend in implementation logic.</p>
+    <div class="cost-grid">
+      <div class="cost-card">
+        <div class="big">~$0.004</div>
+        <div class="lbl">per 10,000 operations</div>
+        <p>Polling, enqueuing, deleting — all counted as operations. 10M ops/month ≈ $4.</p>
+      </div>
+      <div class="cost-card">
+        <div class="big">$0.045</div>
+        <div class="lbl">per GB/month</div>
+        <p>Queue storage cost. A million 1 KB messages = ~1 GB = $0.045. Negligible.</p>
+      </div>
+      <div class="cost-card">
+        <div class="big">Zero</div>
+        <div class="lbl">namespace or premium SKU cost</div>
+        <p>No baseline cost. Service Bus starts at ~$10/month for basic namespace.</p>
+      </div>
+      <div class="cost-card">
+        <div class="big">500 TB</div>
+        <div class="lbl">max queue depth</div>
+        <p>You will never hit the depth limit. The constraint is always your consumers, not the queue.</p>
+      </div>
+    </div>
+    <br>
+    <div class="meta-card">
+      <div class="meta-card-label">The Honest Summary</div>
+      <p>Storage Queues are the cheapest, simplest, most operationally lightweight queue on Azure. If you need dead-lettering, sessions, transactions, or topics — you need Service Bus, and you should pay for it rather than simulating those features on top of Storage Queues.</p>
+    </div>
+  </div>
+  <div class="right">
+    <div class="vis-box">
+      <canvas id="c-cost" height="380"></canvas>
+      <div class="vis-label">Cost vs capability: Storage Queues vs alternatives</div>
+    </div>
+  </div>
+</div>
+</section>
+
+<script>
+// ===================== THEME =====================
+function toggleTheme() {
+  const h = document.documentElement;
+  const isDark = h.getAttribute('data-theme') === 'dark';
+  h.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.querySelector('.theme-btn').textContent = isDark ? '🌙 DARK' : '☀ LIGHT';
+  setTimeout(redrawAll, 100);
+}
+
+function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+// ===================== SCROLL =====================
+const stages = document.querySelectorAll('[id^="stage-"]');
+function onScroll() {
+  const scrollY = window.scrollY;
+  const total = document.body.scrollHeight - window.innerHeight;
+  document.getElementById('progress-bar').style.transform = `scaleX(${scrollY/total})`;
+  
+  let current = 0;
+  stages.forEach((s, i) => {
+    if (s.getBoundingClientRect().top < window.innerHeight * 0.6) current = i;
+  });
+  document.getElementById('stage-ind').textContent = `STAGE ${current} / 11`;
+  document.querySelectorAll('.nav-dot').forEach((d,i) => d.classList.toggle('active', i === current));
+}
+window.addEventListener('scroll', onScroll);
+
+function scrollToStage(i) {
+  stages[i]?.scrollIntoView({behavior:'smooth'});
+}
+
+// ===================== FADE IN =====================
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
+
+// ===================== TABS =====================
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ===================== CANVAS HELPERS =====================
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  const r = window.devicePixelRatio || 1;
+  const w = c.parentElement.clientWidth;
+  const h = c.getAttribute('height') * 1;
+  c.width = w * r; c.height = h * r;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(r, r);
+  return {ctx, w, h, c};
+}
+
+// ===================== C0: ILLUSION =====================
+function drawIllusion() {
+  const s = setupCanvas('c-illusion'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const bg = isDark ? '#1f1d1b' : '#ffffff';
+  const orange = isDark ? '#f97316' : '#ea580c';
+  const blue = isDark ? '#3b82f6' : '#2563eb';
+  const green = isDark ? '#10b981' : '#059669';
+  const text = isDark ? '#a89f94' : '#57534e';
+  
+  ctx.clearRect(0,0,w,h);
+  
+  // Three pillars
+  const cols = [w*0.2, w*0.5, w*0.8];
+  const labels = ['Durability', 'Scale', 'Eventual\nConsistency'];
+  const colors = [orange, blue, green];
+  const descs = ['Messages survive\nreboots, crashes,\nand zone failures','Handles millions\nof messages\nwithout config','Not FIFO,\nnot transactional,\nbest-effort order'];
+  
+  cols.forEach((cx, i) => {
+    // Pillar
+    const barH = 80 + i * 20;
+    ctx.fillStyle = colors[i] + '22';
+    ctx.strokeStyle = colors[i] + '88';
+    ctx.lineWidth = 1;
+    const bw = 80;
+    ctx.beginPath();
+    ctx.roundRect(cx - bw/2, h - barH - 60, bw, barH, 6);
+    ctx.fill(); ctx.stroke();
+    
+    // Icon
+    ctx.fillStyle = colors[i];
+    ctx.font = 'bold 22px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillText(['🔒','⚡','〜'][i], cx, h - barH - 68);
+    
+    // Label
+    ctx.fillStyle = colors[i];
+    ctx.font = 'bold 12px Space Mono';
+    ctx.fillText(labels[i], cx, h - barH - 86);
+    
+    // Description
+    ctx.fillStyle = text;
+    ctx.font = '10px Inter';
+    const lines = descs[i].split('\n');
+    lines.forEach((l, li) => ctx.fillText(l, cx, h - 46 + li * 14));
+  });
+  
+  // Title
+  ctx.fillStyle = text;
+  ctx.font = '11px Space Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText('"Simple" has three hidden dimensions', w/2, 28);
+}
+
+// ===================== C1: SHELF =====================
+let shelfT = 0;
+function drawShelf() {
+  const s = setupCanvas('c-shelf'); if (!s) return;
+  const {ctx, w, h, c} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const bg = isDark ? '#1f1d1b' : '#ffffff';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+  
+  function frame() {
+    shelfT = (shelfT + 0.008) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const phase = shelfT;
+    // Phases: 0-0.25 producer writes, 0.25-0.5 consumer takes+invisible, 0.5-0.75 processing, 0.75-1 delete or return
+    
+    // Shelf
+    ctx.fillStyle = border;
+    ctx.fillRect(60, h/2, w-120, 3);
+    
+    // Labels
+    ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillStyle = text;
+    ctx.fillText('QUEUE SHELF', w/2, h/2 - 10);
+    
+    // Producer (left)
+    ctx.fillStyle = orange + '33';
+    ctx.strokeStyle = orange;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(20, h/2 - 60, 60, 40, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = orange; ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('PRODUCER', 50, h/2 - 34);
+    
+    // Consumer (right)
+    ctx.fillStyle = blue + '33';
+    ctx.strokeStyle = blue;
+    ctx.beginPath(); ctx.roundRect(w-80, h/2 - 60, 60, 40, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = blue; ctx.font = 'bold 9px Space Mono';
+    ctx.fillText('CONSUMER', w-50, h/2 - 34);
+    
+    // Animate message box
+    let msgX, msgY, msgAlpha = 1, isInvisible = false;
+    
+    if (phase < 0.25) {
+      // Producer writes
+      const t = phase / 0.25;
+      msgX = 80 + t * (w*0.4 - 80);
+      msgY = h/2 - 25;
+    } else if (phase < 0.5) {
+      // Consumer takes
+      const t = (phase - 0.25) / 0.25;
+      msgX = w*0.4 + t * (w-160 - w*0.4);
+      msgY = h/2 - 25;
+    } else if (phase < 0.75) {
+      // Processing (invisible)
+      msgX = w-80; msgY = h/2 - 80;
+      isInvisible = true;
+    } else {
+      // Delete
+      const t = (phase - 0.75) / 0.25;
+      msgX = w-80; msgY = h/2 - 80;
+      msgAlpha = 1 - t;
+      isInvisible = true;
+    }
+    
+    // Invisible indicator
+    if (isInvisible) {
+      ctx.fillStyle = (isDark ? '#ffffff11' : '#00000011');
+      ctx.strokeStyle = orange + '44';
+      ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.roundRect(w*0.35, h/2 - 30, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = text; ctx.font = '8px Inter'; ctx.textAlign = 'center';
+      ctx.fillText('INVISIBLE', w*0.35+40, h/2 - 10);
+    }
+    
+    // Message box
+    ctx.globalAlpha = msgAlpha;
+    ctx.fillStyle = orange + '33';
+    ctx.strokeStyle = orange;
+    ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.roundRect(msgX-30, msgY, 60, 24, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = orange; ctx.font = 'bold 8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('MSG', msgX, msgY + 15);
+    ctx.globalAlpha = 1;
+    
+    // Phase label
+    const pLabels = ['1. PRODUCER ENQUEUES', '2. CONSUMER DEQUEUES', '3. PROCESSING (INVISIBLE)', '4. DELETED'];
+    const pi = Math.floor(phase * 4);
+    ctx.fillStyle = [orange, blue, orange, '#10b981'][pi];
+    ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText(pLabels[pi], w/2, h - 20);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C2: PULL =====================
+let pullT = 0;
+function drawPull() {
+  const s = setupCanvas('c-pull'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const green = '#10b981';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  function frame() {
+    pullT += 0.01;
+    ctx.clearRect(0,0,w,h);
+    
+    const half = h/2;
+    
+    // --- TOP: PULL MODEL ---
+    ctx.fillStyle = text; ctx.font = 'bold 10px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('PULL MODEL (Storage Queues)', 20, 22);
+    
+    // Queue box
+    ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+    ctx.strokeStyle = border; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(w/2-50, 34, 100, 40, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = orange; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('QUEUE', w/2, 59);
+    
+    // Consumer polling arrow (animated)
+    const pollPhase = (Math.sin(pullT * 1.5) + 1) / 2;
+    const consumer1X = w * 0.15;
+    ctx.fillStyle = blue + '33'; ctx.strokeStyle = blue;
+    ctx.beginPath(); ctx.roundRect(consumer1X-30, 38, 60, 32, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = blue; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('CONSUMER', consumer1X, 59);
+    
+    // Arrow
+    const arrowX = consumer1X + 30 + pollPhase * (w/2-80 - consumer1X - 30);
+    ctx.strokeStyle = blue + 'cc'; ctx.lineWidth = 2;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath();
+    ctx.moveTo(consumer1X+30, 54); ctx.lineTo(w/2-50, 54);
+    ctx.stroke(); ctx.setLineDash([]);
+    
+    // Dot on arrow
+    ctx.fillStyle = blue;
+    ctx.beginPath(); ctx.arc(arrowX, 54, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = text; ctx.font = '8px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('POLL every ~1-20s', w/4, 86);
+    
+    // Divider
+    ctx.strokeStyle = border; ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(20, half); ctx.lineTo(w-20, half); ctx.stroke();
+    
+    // --- BOTTOM: PUSH MODEL ---
+    ctx.fillStyle = text; ctx.font = 'bold 10px Space Mono'; ctx.textAlign = 'left';
+    ctx.fillText('PUSH MODEL (Event Grid)', 20, half + 18);
+    
+    // Event Grid box
+    ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+    ctx.strokeStyle = border; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(20, half+28, 100, 40, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = green; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('EVENT GRID', 70, half+53);
+    
+    // Push arrows to 3 endpoints
+    const endY = half + 30;
+    const endpoints = [w*0.5, w*0.7, w*0.9];
+    endpoints.forEach((ex, i) => {
+      const phase2 = ((pullT * 2 + i * 0.7) % 1);
+      const ax = 120 + phase2 * (ex - 50 - 120);
+      ctx.strokeStyle = green + '88'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(120, half+48); ctx.lineTo(ex-20, half+48); ctx.stroke();
+      ctx.fillStyle = green;
+      ctx.beginPath(); ctx.arc(ax, half+48, 3, 0, Math.PI*2); ctx.fill();
+      
+      ctx.fillStyle = green + '33'; ctx.strokeStyle = green;
+      ctx.beginPath(); ctx.roundRect(ex-20, half+32, 40, 30, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = green; ctx.font = '7px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(['FN','LA','WH'][i], ex, half+52);
+    });
+    
+    ctx.fillStyle = text; ctx.font = '8px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Broker pushes immediately — consumer must be ready', w/2, h - 14);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C3: AT LEAST ONCE =====================
+let aloT = 0;
+function drawAtLeastOnce() {
+  const s = setupCanvas('c-atleastonce'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const red = '#ef4444'; const green = '#10b981';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  function frame() {
+    aloT = (aloT + 0.005) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    // Timeline
+    const y0 = 60, y1 = h - 60;
+    const steps = [
+      {t:0.05, x:w*0.1, label:'Enqueue', color:orange},
+      {t:0.25, x:w*0.3, label:'Dequeue', color:blue},
+      {t:0.45, x:w*0.5, label:'Processing\n(CRASH)', color:red},
+      {t:0.65, x:w*0.7, label:'Reappears\nin queue', color:orange},
+      {t:0.85, x:w*0.88, label:'2nd consumer\ndequeues', color:green},
+    ];
+    
+    // Timeline line
+    ctx.strokeStyle = border; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(w*0.05, h/2); ctx.lineTo(w*0.95, h/2); ctx.stroke();
+    
+    // Arrow
+    ctx.fillStyle = border;
+    ctx.beginPath(); ctx.moveTo(w*0.96, h/2-5); ctx.lineTo(w*0.96, h/2+5); ctx.lineTo(w*0.98, h/2); ctx.fill();
+    ctx.fillStyle = text; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('TIME', w*0.97, h/2+14);
+    
+    steps.forEach((s, i) => {
+      const active = aloT > s.t;
+      const alpha = active ? 1 : 0.3;
+      ctx.globalAlpha = alpha;
+      
+      // Dot
+      ctx.fillStyle = s.color;
+      ctx.beginPath(); ctx.arc(s.x, h/2, 8, 0, Math.PI*2); ctx.fill();
+      
+      // Highlight current
+      if (aloT > s.t && (i === steps.length-1 || aloT < steps[i+1]?.t)) {
+        ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(s.x, h/2, 14, 0, Math.PI*2); ctx.stroke();
+      }
+      
+      // Label (alternating above/below)
+      const above = i % 2 === 0;
+      ctx.fillStyle = s.color; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+      const lines = s.label.split('\n');
+      lines.forEach((l, li) => {
+        ctx.fillText(l, s.x, above ? h/2 - 28 + li*12 : h/2 + 28 + li*12);
+      });
+      ctx.globalAlpha = 1;
+    });
+    
+    // CRASH lightning bolt
+    if (aloT > 0.4 && aloT < 0.65) {
+      ctx.fillStyle = red; ctx.font = '20px Inter'; ctx.textAlign = 'center';
+      ctx.fillText('⚡', w*0.5, h/2 - 50);
+    }
+    
+    // Idempotency note
+    ctx.fillStyle = green + (aloT > 0.8 ? 'ff' : '44');
+    ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('→ Consumer must be idempotent', w/2, h - 22);
+    
+    // Dequeue count badge
+    if (aloT > 0.8) {
+      ctx.fillStyle = orange + '33'; ctx.strokeStyle = orange; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(w*0.88-40, h/2-42, 80, 24, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = orange; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('DequeueCount: 2', w*0.88, h/2-25);
+    }
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C4: VISIBILITY TIMEOUT =====================
+let vtT = 0;
+function drawVisTimeout() {
+  const s = setupCanvas('c-vistimeout'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const red = '#ef4444'; const green = '#10b981';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  function frame() {
+    vtT = (vtT + 0.004) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    const bx = 40, bw = w-80, by = 60, bh = 30;
+    
+    // Title
+    ctx.fillStyle = text; ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('VISIBILITY TIMEOUT WINDOW', w/2, 30);
+    
+    // Timeline bar background
+    ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+    ctx.strokeStyle = border; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke();
+    
+    // Fill (animated)
+    const fillW = Math.min(vtT * bw * 1.4, bw);
+    const overdue = fillW >= bw;
+    ctx.fillStyle = overdue ? red + '88' : blue + '66';
+    ctx.beginPath(); ctx.roundRect(bx, by, fillW, bh, 6); ctx.fill();
+    
+    // Processing zone (0 to 70%)
+    ctx.fillStyle = blue + '33';
+    ctx.beginPath(); ctx.roundRect(bx, by, bw * 0.7, bh, 0); ctx.fill();
+    
+    // Timeout marker
+    ctx.strokeStyle = orange; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(bx + bw*0.7, by-10); ctx.lineTo(bx + bw*0.7, by+bh+10); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = orange; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('TIMEOUT', bx + bw*0.7, by - 14);
+    
+    // Cursor (current time)
+    const cx2 = bx + Math.min(fillW, bw);
+    ctx.fillStyle = overdue ? red : green;
+    ctx.beginPath(); ctx.moveTo(cx2-6, by+bh+2); ctx.lineTo(cx2+6, by+bh+2); ctx.lineTo(cx2, by+bh+12); ctx.fill();
+    
+    // State labels
+    const stateY = by + bh + 40;
+    if (!overdue) {
+      ctx.fillStyle = green; ctx.font = 'bold 11px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('PROCESSING — MESSAGE INVISIBLE TO OTHER CONSUMERS', w/2, stateY);
+    } else {
+      ctx.fillStyle = red; ctx.font = 'bold 11px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('⚠ TIMEOUT EXPIRED — MESSAGE REAPPEARS IN QUEUE', w/2, stateY);
+    }
+    
+    // Safe zone / danger zone labels
+    ctx.fillStyle = blue; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Safe processing window', bx + bw*0.35, by+bh+60);
+    ctx.fillStyle = red + '88';
+    ctx.fillText('Duplicate risk zone', bx + bw*0.85, by+bh+60);
+    
+    // Best practice
+    ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('Best practice: set timeout to 2× your p99 processing time', w/2, h-22);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C5: POISON =====================
+let poisonT = 0;
+function drawPoison() {
+  const s = setupCanvas('c-poison'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const red = '#ef4444'; const purple = '#a78bfa'; const green = '#10b981';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  function frame() {
+    poisonT = (poisonT + 0.006) % 1;
+    ctx.clearRect(0,0,w,h);
+    
+    // Main queue
+    const qx = w/2 - 60, qy = 30, qw = 120, qh = 50;
+    ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(qx, qy, qw, qh, 6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = text; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('MAIN QUEUE', w/2, qy+30);
+    
+    // Poison message in queue (blinking)
+    const blink = Math.sin(poisonT * Math.PI * 8) > 0;
+    ctx.fillStyle = red + (blink ? 'cc' : '44');
+    ctx.strokeStyle = red;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(w/2-20, qy+10, 40, 24, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = blink ? '#fff' : red; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('☠ MSG', w/2, qy+26);
+    
+    // Cycle arrow (consumer → fail → requeue)
+    const angle = poisonT * Math.PI * 2;
+    const radius = 80;
+    const cy = h*0.52;
+    
+    // Consumer
+    const consX = w/2 + Math.cos(angle) * radius * 0.8;
+    const consY = cy + Math.sin(angle) * radius * 0.5;
+    
+    ctx.fillStyle = orange + '33'; ctx.strokeStyle = orange; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(consX-30, consY-15, 60, 28, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = orange; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('CONSUMER', consX, consY+3);
+    
+    // Retry loop path
+    ctx.strokeStyle = red + '66'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.ellipse(w/2, cy, radius*0.85, radius*0.55, 0, 0, Math.PI*2);
+    ctx.stroke(); ctx.setLineDash([]);
+    
+    // Dequeue count badges
+    const counts = ['DequeueCount: 1', 'DequeueCount: 2', 'DequeueCount: 3', 'DequeueCount: 4', 'DequeueCount: 5 → POISON'];
+    const countIdx = Math.floor(poisonT * 5);
+    const isPoison = countIdx >= 4;
+    
+    ctx.fillStyle = isPoison ? red + '33' : orange + '22';
+    ctx.strokeStyle = isPoison ? red : orange;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(w/2-90, cy-15, 180, 26, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = isPoison ? red : orange; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText(counts[Math.min(countIdx, 4)], w/2, cy+3);
+    
+    // Poison queue
+    if (poisonT > 0.8) {
+      ctx.fillStyle = purple + '33'; ctx.strokeStyle = purple; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(w-130, h-80, 110, 50, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = purple; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText('POISON QUEUE', w-75, h-50);
+      ctx.fillStyle = text; ctx.font = '8px Inter';
+      ctx.fillText('(Manual pattern)', w-75, h-36);
+      
+      // Arrow to poison queue
+      ctx.strokeStyle = purple; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(w/2+30, cy+10); ctx.lineTo(w-130, h-55); ctx.stroke();
+    }
+    
+    ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('No built-in DLQ — implement dequeue threshold check yourself', w/2, h-14);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C6: SCALE =====================
+let scaleT = 0;
+function drawScale() {
+  const s = setupCanvas('c-scale'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const green = '#10b981';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  const particles = [];
+  for (let i = 0; i < 30; i++) particles.push({x: Math.random()*w*0.3+20, y: Math.random()*h*0.6+40, vx: 1+Math.random()*2, vy: (Math.random()-0.5)*0.5, alpha: Math.random()});
+
+  function frame() {
+    scaleT += 0.015;
+    ctx.clearRect(0,0,w,h);
+    
+    const burst = Math.sin(scaleT * 0.7) * 0.5 + 0.5;
+    
+    // Producer cluster (left)
+    const prodCount = 2 + Math.round(burst * 4);
+    for (let i = 0; i < prodCount; i++) {
+      const py = 50 + i * (h-100)/(prodCount-1 || 1);
+      ctx.fillStyle = orange + '33'; ctx.strokeStyle = orange; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(10, py-14, 70, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = orange; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(`PROD ${i+1}`, 45, py+4);
+    }
+    
+    // Particles flowing to queue
+    particles.forEach(p => {
+      p.x += p.vx * (0.5 + burst);
+      if (p.x > w*0.5) { p.x = 80; p.y = 40 + Math.random() * (h-80); }
+      ctx.fillStyle = orange;
+      ctx.globalAlpha = p.alpha * 0.8;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+    
+    // Queue (center) — grows with burst
+    const qDepth = 40 + burst * 100;
+    const qx = w*0.5-30, qy = h/2 - qDepth/2;
+    ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+    ctx.strokeStyle = border; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(qx, qy, 60, qDepth, 6); ctx.fill(); ctx.stroke();
+    
+    // Messages in queue
+    const msgCount = Math.round(burst * 8);
+    for (let i = 0; i < msgCount; i++) {
+      const my = qy + 8 + i * ((qDepth-16)/Math.max(msgCount,1));
+      ctx.fillStyle = orange + '88';
+      ctx.beginPath(); ctx.roundRect(qx+5, my, 50, 10, 2); ctx.fill();
+    }
+    ctx.fillStyle = text; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('QUEUE', w*0.5, h/2+qDepth/2+16);
+    ctx.fillStyle = orange; ctx.font = '10px Space Mono';
+    ctx.fillText(`${msgCount} msgs`, w*0.5, h/2);
+    
+    // Consumer cluster (right) — steady
+    const conCount = 3;
+    for (let i = 0; i < conCount; i++) {
+      const cy2 = 70 + i * (h-140)/2;
+      ctx.fillStyle = blue + '33'; ctx.strokeStyle = blue; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(w-90, cy2-14, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = blue; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(`CONSUMER ${i+1}`, w-50, cy2+4);
+      
+      // Arrow from queue to consumer
+      ctx.strokeStyle = blue + '66'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(qx+60, h/2); ctx.lineTo(w-90, cy2); ctx.stroke();
+    }
+    
+    // Labels
+    ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText(`Producer burst: ${Math.round(burst*100)}%  |  Consumers: steady 3`, w/2, h-18);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C7: PAYLOAD =====================
+function drawPayload() {
+  const s = setupCanvas('c-payload'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const green = '#10b981'; const purple = '#a78bfa';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+  
+  ctx.clearRect(0,0,w,h);
+  
+  // Queue message (small, on left)
+  const mx = 50, my = h/2-60, mw = 180, mh = 110;
+  ctx.fillStyle = isDark ? '#252220' : '#f5f4f2';
+  ctx.strokeStyle = orange; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(mx, my, mw, mh, 8); ctx.fill(); ctx.stroke();
+  
+  ctx.fillStyle = orange; ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'left';
+  ctx.fillText('QUEUE MESSAGE (< 64KB)', mx+10, my+18);
+  
+  const fields = [
+    ['eventType:', '"image.uploaded"', text],
+    ['correlationId:', '"abc-123"', text],
+    ['blobPath:', '"uploads/img.jpg"', blue],
+    ['timestamp:', '"2024-01-15T..."', text],
+  ];
+  fields.forEach((f, i) => {
+    ctx.fillStyle = text; ctx.font = '9px Space Mono';
+    ctx.fillText(f[0], mx+10, my+36+i*16);
+    ctx.fillStyle = f[2];
+    ctx.fillText(f[1], mx+80, my+36+i*16);
+  });
+  
+  // Arrow
+  ctx.strokeStyle = blue; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(mx+mw+10, my+mh/2); ctx.lineTo(w-170, my+mh/2); ctx.stroke();
+  ctx.fillStyle = blue;
+  ctx.beginPath(); ctx.moveTo(w-174, my+mh/2-5); ctx.lineTo(w-164, my+mh/2); ctx.lineTo(w-174, my+mh/2+5); ctx.fill();
+  ctx.fillStyle = blue; ctx.font = '8px Inter'; ctx.textAlign = 'center';
+  ctx.fillText('Consumer fetches blob using pointer', (mx+mw+w-160)/2, my+mh/2-8);
+  
+  // Blob Storage (right, large)
+  const bx = w-155, by2 = my-20, bw2 = 130, bh2 = mh+40;
+  ctx.fillStyle = green + '22'; ctx.strokeStyle = green; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(bx, by2, bw2, bh2, 8); ctx.fill(); ctx.stroke();
+  
+  ctx.fillStyle = green; ctx.font = 'bold 9px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('BLOB STORAGE', bx+bw2/2, by2+18);
+  ctx.font = '9px Inter'; ctx.fillStyle = text;
+  ctx.fillText('img.jpg', bx+bw2/2, by2+38);
+  ctx.font = '8px Inter'; ctx.fillStyle = text;
+  ctx.fillText('50 MB raw data', bx+bw2/2, by2+54);
+  
+  // Size comparison
+  ctx.fillStyle = orange + '33'; ctx.strokeStyle = orange; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(bx+10, by2+65, 110, 20, 3); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = orange; ctx.font = '8px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('↑ Too big for queue', bx+bw2/2, by2+79);
+  
+  // Size labels
+  ctx.fillStyle = orange; ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('< 1 KB', mx+mw/2, my+mh+18);
+  ctx.fillStyle = green;
+  ctx.fillText('50 MB', bx+bw2/2, by2+bh2+18);
+  
+  ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+  ctx.fillText('Message = signal   ·   Blob = data', w/2, h-18);
+}
+
+// ===================== C8: ORDERING =====================
+let orderT = 0;
+function drawOrdering() {
+  const s = setupCanvas('c-ordering'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const red = '#ef4444';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+
+  const msgs = [{id:'A',color:'#f97316'},{id:'B',color:'#3b82f6'},{id:'C',color:'#10b981'},{id:'D',color:'#a78bfa'}];
+  let positions = [0,1,2,3];
+  let shuffleTimer = 0;
+
+  function frame() {
+    orderT += 0.01;
+    shuffleTimer += 0.01;
+    ctx.clearRect(0,0,w,h);
+    
+    // Enqueue side (left) - ordered
+    ctx.fillStyle = text; ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('ENQUEUED (ordered)', w*0.2, 28);
+    
+    msgs.forEach((m, i) => {
+      const y = 45 + i * 36;
+      ctx.fillStyle = m.color + '33'; ctx.strokeStyle = m.color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(w*0.08, y, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = m.color; ctx.font = 'bold 10px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(`MSG ${m.id}`, w*0.08+40, y+18);
+    });
+    
+    // Arrow
+    ctx.strokeStyle = border; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(w*0.38, h/2); ctx.lineTo(w*0.62, h/2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('scale + retries', w/2, h/2 - 8);
+    ctx.fillText('+ visibility timeout', w/2, h/2 + 8);
+    
+    // Shuffled consumer side
+    ctx.fillStyle = text; ctx.font = '10px Space Mono'; ctx.textAlign = 'center';
+    ctx.fillText('DEQUEUED (shuffled)', w*0.8, 28);
+    
+    // Shuffle every 2s
+    if (shuffleTimer > 1.5) {
+      shuffleTimer = 0;
+      const a = Math.floor(Math.random()*4);
+      const b = Math.floor(Math.random()*4);
+      [positions[a], positions[b]] = [positions[b], positions[a]];
+    }
+    
+    positions.forEach((origIdx, slot) => {
+      const m = msgs[origIdx];
+      const y = 45 + slot * 36;
+      const isOutOfOrder = slot !== origIdx;
+      
+      ctx.fillStyle = m.color + '33';
+      ctx.strokeStyle = isOutOfOrder ? red : m.color;
+      ctx.lineWidth = isOutOfOrder ? 2 : 1.5;
+      if (isOutOfOrder) ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.roundRect(w*0.72, y, 80, 28, 4); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = m.color; ctx.font = 'bold 10px Space Mono'; ctx.textAlign = 'center';
+      ctx.fillText(`MSG ${m.id}`, w*0.72+40, y+18);
+      
+      if (isOutOfOrder) {
+        ctx.fillStyle = red; ctx.font = '8px Inter';
+        ctx.fillText('⚠', w*0.72+68, y+12);
+      }
+    });
+    
+    ctx.fillStyle = red; ctx.font = '9px Inter'; ctx.textAlign = 'center';
+    ctx.fillText('⚠ Order not guaranteed under concurrent consumers', w/2, h-18);
+    
+    requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ===================== C9: COST =====================
+function drawCost() {
+  const s = setupCanvas('c-cost'); if (!s) return;
+  const {ctx, w, h} = s;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const orange = '#f97316'; const blue = '#3b82f6'; const green = '#10b981'; const purple = '#a78bfa';
+  const text = isDark ? '#a89f94' : '#57534e';
+  const border = isDark ? '#3d3a37' : '#ddd9d3';
+  
+  ctx.clearRect(0,0,w,h);
+  
+  const services = [
+    {name:'Storage\nQueues', cost:1, features:2, color:orange},
+    {name:'Service\nBus', cost:3, features:8, color:blue},
+    {name:'Event\nHubs', cost:5, features:6, color:green},
+    {name:'Event\nGrid', cost:2, features:5, color:purple},
+  ];
+  
+  // Axes
+  const ox = 60, oy = h-60, aw = w-100, ah = h-100;
+  ctx.strokeStyle = border; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ox, 20); ctx.lineTo(ox, oy); ctx.lineTo(ox+aw, oy); ctx.stroke();
+  
+  // Axis labels
+  ctx.fillStyle = text; ctx.font = '9px Space Mono'; ctx.textAlign = 'center';
+  ctx.fillText('COST →', ox + aw/2, oy+22);
+  ctx.save(); ctx.translate(16, oy/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('FEATURES →', 0, 0); ctx.restore();
+  
+  // Grid dots
+  for (let i = 1; i <= 10; i++) {
+    for (let j = 1; j <= 10; j++) {
+      ctx.fillStyle = border + '55';
+      ctx.beginPath(); ctx.arc(ox + (i/10)*aw, oy - (j/10)*ah, 1, 0, Math.PI*2); ctx.fill();
+    }
+  }
+  
+  // Bubbles
+  services.forEach(svc => {
+    const bx = ox + (svc.cost/10)*aw;
+    const by = oy - (svc.features/10)*ah;
+    const r = 28;
+    
+    ctx.fillStyle = svc.color + '33'; ctx.strokeStyle = svc.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    
+    ctx.fillStyle = svc.color; ctx.font = 'bold 8px Space Mono'; ctx.textAlign = 'center';
+    const lines = svc.name.split('\n');
+    lines.forEach((l,i) => ctx.fillText(l, bx, by - 4 + i*12));
+  });
+  
+  // Annotation
+  ctx.fillStyle = text; ctx.font = '9px Inter'; ctx.textAlign = 'left';
+  ctx.fillText('Storage Queues: lowest cost, fewest features', ox+2, 18);
+}
+
+// ===================== INIT =====================
+function redrawAll() {
+  drawIllusion();
+  drawPayload();
+  drawCost();
+}
+
+// Start animated canvases
+drawShelf();
+drawPull();
+drawAtLeastOnce();
+drawVisTimeout();
+drawPoison();
+drawScale();
+drawOrdering();
+
+// Draw static canvases
+redrawAll();
+
+// Redraw on resize
+window.addEventListener('resize', () => { setTimeout(redrawAll, 100); });
+</script>
+</body>
+</html>
